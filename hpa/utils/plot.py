@@ -36,3 +36,14 @@ def visualize_blend(imgs, size=None):
     if size is not None:
         img = img.resize(size)
     return img
+
+
+def visualize_cell_mask(mask, imgs):
+    binary_mask = mask.copy()
+    binary_mask[binary_mask != 0] = 255
+    binary_mask = binary_mask.astype(np.uint8)
+
+    blend = visualize_blend(imgs)
+    seg_mask = Image.fromarray(binary_mask)
+    blend.putalpha(seg_mask)
+    return blend
