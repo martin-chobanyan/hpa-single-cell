@@ -1,1 +1,1 @@
-from base import HPACellSegmenter
+from .base import HPACellSegmenter
