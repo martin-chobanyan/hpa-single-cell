@@ -7,10 +7,10 @@ def plot_sample(imgs, figsize=(10, 10)):
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     ((ax_blue, ax_green), (ax_red, ax_yellow)) = axes
 
-    ax_blue.imshow(imgs['blue'])
-    ax_green.imshow(imgs['green'])
-    ax_red.imshow(imgs['red'])
-    ax_yellow.imshow(imgs['yellow'])
+    ax_blue.imshow(imgs['blue'], cmap='Blues')
+    ax_green.imshow(imgs['green'], cmap='Greens')
+    ax_red.imshow(imgs['red'], cmap='Reds')
+    ax_yellow.imshow(imgs['yellow'], cmap='YlOrBr')
 
     ax_blue.set_title('Blue (Nuclei)')
     ax_green.set_title('Green (Target)')
