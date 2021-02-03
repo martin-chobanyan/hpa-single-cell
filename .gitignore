@@ -1,3 +1,7 @@
+# pickles
+*.pkl
+*.pth
+
 # pycharm
 .idea/
 
