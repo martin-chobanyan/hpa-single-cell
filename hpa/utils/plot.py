@@ -5,7 +5,7 @@ from PIL import Image
 
 def plot_sample(imgs, figsize=(10, 10)):
     fig, axes = plt.subplots(2, 2, figsize=figsize)
-    ((ax_blue, ax_green), (ax_red, ax_yellow)) = axes
+    ((ax_green, ax_blue), (ax_red, ax_yellow)) = axes
 
     ax_blue.imshow(imgs['blue'], cmap='Blues')
     ax_green.imshow(imgs['green'], cmap='Greens')
