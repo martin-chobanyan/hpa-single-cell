@@ -1,1 +1,1 @@
-from .dataset import HPADataset
+from .dataset import HPADataset, N_CLASSES

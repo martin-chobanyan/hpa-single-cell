@@ -1,9 +1,10 @@
 import os
 
-from imageio import imread
+from PIL import Image, ImageFile
 import numpy as np
 from torch.utils.data import Dataset
 
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 N_CLASSES = 19
 
 
@@ -12,7 +13,7 @@ def load_channels(img_id, img_dir):
     for color in ('blue', 'green', 'red', 'yellow'):
         filename = f'{img_id}_{color}.png'
         filepath = os.path.join(img_dir, filename)
-        imgs[color] = imread(filepath)
+        imgs[color] = np.array(Image.open(filepath))
     return imgs
 
 
@@ -26,7 +27,7 @@ class BaseDataset(Dataset):
         data_dir: str
         """
         super().__init__()
-        self.train_idx = train_idx
+        self.data_idx = train_idx
         self.data_dir = data_dir
         self.n_samples = len(train_idx)
 
@@ -41,16 +42,17 @@ class BaseDataset(Dataset):
         -------
         An array or tensor of the four image filters
         """
-        image_id, labels = self.train_idx.loc[item, ['ID', 'Label']]
+        image_id, labels = self.data_idx.loc[item, ['ID', 'Label']]
 
         # load and stack the images
         channels = load_channels(image_id, self.data_dir)
 
         # define a binary vector for the labels
-        labels = labels.split('|')
         label_vec = np.zeros(N_CLASSES - 1, dtype=np.int64)
+        labels = [int(i) for i in labels.split('|')]
         for i in labels:
-            label_vec[int(i)] = 1
+            if i != 18:
+                label_vec[i] = 1
 
         return channels, label_vec
 
@@ -84,6 +86,7 @@ class HPADataset(BaseDataset):
         """
         channels, label_vec = super().__getitem__(item)
         image = np.stack([channels['green'], channels['red'], channels['yellow'], channels['blue']])
+        image = image.transpose((1, 2, 0))
         image = image.astype(np.float32)
         if self.transforms is not None:
             image = self.transforms(image)
@@ -122,4 +125,3 @@ class IsolatedTargetDataset(BaseDataset):
 
     def __len__(self):
         return
-
