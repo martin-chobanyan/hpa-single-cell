@@ -60,7 +60,7 @@ class BaseDataset(Dataset):
         return self.n_samples
 
 
-class HPADataset(BaseDataset):
+class IsolatedTargetDataset(BaseDataset):
     def __init__(self, train_idx, data_dir, transforms=None):
         """Initialization
 
@@ -68,11 +68,34 @@ class HPADataset(BaseDataset):
         ----------
         train_idx: pandas.DataFrame
         data_dir: str
-        transforms: callable
+        transforms: hpa.data.transforms.HPACompose
         """
         super().__init__(train_idx, data_dir)
         self.transforms = transforms
 
+    def __getitem__(self, item):
+        channels, label_vec = super().__getitem__(item)
+
+        # prepare the target protein image
+        tgt_img = channels['green']
+
+        # prepare the reference image (microtuble + er + nuclei)
+        ref_img = np.dstack([channels['red'], channels['yellow'], channels['blue']])
+
+        if self.transforms is not None:
+            aug_dict = self.transforms(image=tgt_img, ref=ref_img)
+            tgt_img = aug_dict['image']
+            ref_img = aug_dict['ref']
+
+        # if the target image is still a numpy array after the transformations
+        # add an extra channel dimension as the first axis
+        if isinstance(tgt_img, np.ndarray):
+            tgt_img = tgt_img.reshape((1, *tgt_img.shape))
+
+        return tgt_img, ref_img, label_vec
+
+
+class HPADataset(IsolatedTargetDataset):
     def __getitem__(self, item):
         """Retrieve a multichannel image
 
@@ -84,44 +107,6 @@ class HPADataset(BaseDataset):
         -------
         An array or tensor of the four image filters
         """
-        channels, label_vec = super().__getitem__(item)
-        image = np.stack([channels['green'], channels['red'], channels['yellow'], channels['blue']])
-        image = image.transpose((1, 2, 0))
-        image = image.astype(np.float32)
-        if self.transforms is not None:
-            image = self.transforms(image)
-        return image, label_vec
-
-
-class IsolatedTargetDataset(BaseDataset):
-    def __init__(self, train_idx, data_dir, transforms=None):
-        """Initialization
-
-        Parameters
-        ----------
-        train_idx: pandas.DataFrame
-        data_dir: str
-        transforms: callable
-        """
-        super().__init__(train_idx, data_dir)
-        self.transforms = transforms
-
-    def __getitem__(self, item):
-        channels, label_vec = super().__getitem__(item)
-
-        # prepare the target protein image
-        tgt_img = channels['green']
-        tgt_img = tgt_img.astype(np.float32)
-        tgt_img = np.expand_dims(tgt_img, axis=0)
-
-        # prepare the reference image (microtuble, er, nuclei)
-        ref_img = np.stack([channels['red'], channels['yellow'], channels['blue']])
-        ref_img = ref_img.astype(np.float32)
-
-        if self.transforms is not None:
-            tgt_img = self.transforms(tgt_img)
-            ref_img = self.transforms(ref_img)
-        return tgt_img, ref_img
-
-    def __len__(self):
-        return
+        tgt_img, ref_img, label_vec = super().__getitem__(item)
+        img = np.concatenate([tgt_img, ref_img], axis=0)
+        return img, label_vec

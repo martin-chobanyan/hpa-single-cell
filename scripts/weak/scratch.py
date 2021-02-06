@@ -1,15 +1,16 @@
 import os
 from yaml import safe_load
 
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 import pandas as pd
 from torch.nn import Conv2d, Linear
 from torch.optim import Adam
 from torchvision.models import resnet50
-from torchvision.transforms import Compose, ToTensor
 from torch.utils.data import DataLoader
 
 from hpa.data import HPADataset, N_CLASSES
-from hpa.data.transforms import ResizeImage
+from hpa.data.transforms import HPACompose
 from hpa.model.loss import MultiLabelNLL
 from hpa.utils import create_folder
 from hpa.utils.train import checkpoint, Logger, train_epoch, test_epoch
@@ -34,9 +35,13 @@ if __name__ == '__main__':
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    dim = config['data']['image_size']
-    IMAGE_SIZE = (dim, dim)
-    transform_fn = Compose([ResizeImage(IMAGE_SIZE), ToTensor()])
+    img_dim = config['data']['image_size']
+    transform_fn = HPACompose([
+        A.Resize(img_dim, img_dim),
+        A.Flip(p=0.5),
+        A.ShiftScaleRotate(p=0.5),
+        ToTensorV2()
+    ])
 
     train_data = HPADataset(train_idx, DATA_DIR, transforms=transform_fn)
     val_data = HPADataset(val_idx, DATA_DIR, transforms=transform_fn)
