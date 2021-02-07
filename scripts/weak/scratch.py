@@ -4,14 +4,13 @@ from yaml import safe_load
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import pandas as pd
-from torch.nn import Conv2d, Linear
+from torch.nn import BCELoss, Conv2d, Linear, Sequential, Sigmoid
 from torch.optim import Adam
 from torchvision.models import resnet50
 from torch.utils.data import DataLoader
 
 from hpa.data import HPADataset, N_CLASSES
 from hpa.data.transforms import HPACompose
-from hpa.model.loss import MultiLabelNLL
 from hpa.utils import create_folder
 from hpa.utils.train import checkpoint, Logger, train_epoch, test_epoch
 
@@ -27,14 +26,8 @@ if __name__ == '__main__':
         config = safe_load(file)
 
     # -------------------------------------------------------------------------------------------
-    # Prepare the data
+    # Prepare the augmentations
     # -------------------------------------------------------------------------------------------
-
-    ROOT_DIR = config['data']['root_dir']
-    DATA_DIR = os.path.join(ROOT_DIR, 'train')
-    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
-    val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
-
     img_dim = config['data']['image_size']
     transform_fn = HPACompose([
         A.Resize(img_dim, img_dim),
@@ -42,6 +35,14 @@ if __name__ == '__main__':
         A.ShiftScaleRotate(p=0.5),
         ToTensorV2()
     ])
+
+    # -------------------------------------------------------------------------------------------
+    # Prepare the data
+    # -------------------------------------------------------------------------------------------
+    ROOT_DIR = config['data']['root_dir']
+    DATA_DIR = os.path.join(ROOT_DIR, 'train')
+    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
+    val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
     train_data = HPADataset(train_idx, DATA_DIR, transforms=transform_fn)
     val_data = HPADataset(val_idx, DATA_DIR, transforms=transform_fn)
@@ -53,16 +54,17 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Prepare the model
     # -------------------------------------------------------------------------------------------
-    DEVICE = 'cuda:0'
+    DEVICE = 'cuda'
     LR = config['model']['lr']
     N_EPOCHS = config['model']['epochs']
 
-    model = resnet50()
-    model.conv1 = Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
-    model.fc = Linear(2048, N_CLASSES - 1)
+    resnet_model = resnet50()
+    resnet_model.conv1 = Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
+    resnet_model.fc = Linear(2048, N_CLASSES - 1)
+    model = Sequential(resnet_model, Sigmoid())
     model = model.to(DEVICE)
 
-    criterion = MultiLabelNLL()
+    criterion = BCELoss()
     optimizer = Adam(model.parameters(), lr=LR)
 
     # -------------------------------------------------------------------------------------------
@@ -96,7 +98,7 @@ if __name__ == '__main__':
                               epoch=epoch,
                               n_batches=N_VAL_BATCHES)
 
-        logger.add_entry([epoch, train_loss, val_loss])
+        logger.add_entry(epoch, train_loss, val_loss)
         if val_loss < best_loss:
             best_loss = val_loss
             filepath = os.path.join(CHECKPOINT_DIR, f'model{epoch}.pth')
