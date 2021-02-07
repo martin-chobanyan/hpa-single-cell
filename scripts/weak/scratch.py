@@ -14,7 +14,6 @@ from hpa.data.transforms import HPACompose
 from hpa.utils import create_folder
 from hpa.utils.train import checkpoint, Logger, train_epoch, test_epoch
 
-
 if __name__ == '__main__':
     print('Training a weakly-supervised classifer from scratch')
 
@@ -33,6 +32,7 @@ if __name__ == '__main__':
         A.Resize(img_dim, img_dim),
         A.Flip(p=0.5),
         A.ShiftScaleRotate(p=0.5),
+        A.Normalize(mean=(0,), std=(1,), max_pixel_value=255),
         ToTensorV2()
     ])
 

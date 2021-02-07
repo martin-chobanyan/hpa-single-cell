@@ -2,6 +2,7 @@ import os
 
 from PIL import Image, ImageFile
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -87,10 +88,13 @@ class IsolatedTargetDataset(BaseDataset):
             tgt_img = aug_dict['image']
             ref_img = aug_dict['ref']
 
-        # if the target image is still a numpy array after the transformations
-        # add an extra channel dimension as the first axis
+        # convert the data types to floats for all channels
         if isinstance(tgt_img, np.ndarray):
-            tgt_img = tgt_img.reshape((1, *tgt_img.shape))
+            tgt_img = tgt_img.astype(np.float32)
+            ref_img = ref_img.astype(np.float32)
+        elif isinstance(tgt_img, torch.Tensor):
+            tgt_img = tgt_img.float()
+            ref_img = ref_img.float()
 
         return tgt_img, ref_img, label_vec
 
@@ -108,5 +112,8 @@ class HPADataset(IsolatedTargetDataset):
         An array or tensor of the four image filters
         """
         tgt_img, ref_img, label_vec = super().__getitem__(item)
-        img = np.concatenate([tgt_img, ref_img], axis=0)
+        if isinstance(tgt_img, np.ndarray):
+            img = np.concatenate([tgt_img, ref_img], axis=0)
+        else:
+            img = torch.cat([tgt_img, ref_img], dim=0)
         return img, label_vec
