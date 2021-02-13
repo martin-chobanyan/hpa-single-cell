@@ -49,7 +49,7 @@ class BaseDataset(Dataset):
         channels = load_channels(image_id, self.data_dir)
 
         # define a binary vector for the labels
-        label_vec = np.zeros(N_CLASSES - 1, dtype=np.int64)
+        label_vec = np.zeros(N_CLASSES - 1, dtype=np.float32)
         labels = [int(i) for i in labels.split('|')]
         for i in labels:
             if i != 18:
