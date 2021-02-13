@@ -1,7 +1,27 @@
 import albumentations as A
 import numpy as np
 import torch
+import torch.nn.functional as F
 from tqdm import tqdm
+
+
+class GuidedBackPropagation:
+    def __init__(self, model, device):
+        def pos_grad_hook(module, grad_in, grad_out):
+            return tuple([F.relu(g) if g is not None else None for g in grad_in])
+
+        self.model = model.to(device)
+        self.device = device
+
+        for m in self.model.modules():
+            m.register_backward_hook(pos_grad_hook)
+
+    def __call__(self, img, label_id):
+        img.requires_grad = True
+        img = img.to(self.device)
+        out = self.model(img)
+        out[0, label_id].backward()
+        return img.grad.data
 
 
 class RISE:
