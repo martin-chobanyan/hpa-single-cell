@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from . import parse_string_label
+from .misc import parse_string_label
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 N_CLASSES = 19
