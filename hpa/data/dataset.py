@@ -5,6 +5,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from . import parse_string_label
+
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 N_CLASSES = 19
 
@@ -50,7 +52,7 @@ class BaseDataset(Dataset):
 
         # define a binary vector for the labels
         label_vec = np.zeros(N_CLASSES - 1, dtype=np.float32)
-        labels = [int(i) for i in labels.split('|')]
+        labels = parse_string_label(labels)
         for i in labels:
             if i != 18:
                 label_vec[i] = 1
