@@ -54,12 +54,11 @@ class Cell:
 
     @staticmethod
     def __isolate_cell(img, mask, background_value):
-        if len(img.shape) == 2:
-            background_mask = ~mask
-        else:
-            background_mask = ~np.expand_dims(mask, axis=-1)
         img_copy = deepcopy(img)
-        img_copy[background_mask] = background_value
+        if len(img.shape) == 2:
+            img_copy[~mask] = background_value
+        else:
+            img_copy[:, ~mask] = background_value
         return img_copy
 
     def isolate_full_cell(self, img, background_value=0):
