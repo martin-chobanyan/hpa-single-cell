@@ -9,6 +9,7 @@ from .misc import parse_string_label
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 N_CLASSES = 19
+NEGATIVE_LABEL = N_CLASSES - 1
 
 
 def load_channels(img_id, img_dir):
