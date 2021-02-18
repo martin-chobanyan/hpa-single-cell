@@ -1,16 +1,22 @@
-from hpa.data import NEGATIVE_LABEL
+from hpa.data import NEGATIVE_LABEL, N_CLASSES
+
+DEFAULT_CONFIDENCE = 0.5
 
 
-def assign_cell_labels(cells, pred_map, intersect_cutoff):
+def assign_cell_labels(cells, pred_map, intersect_cutoff, confidence_map=None):
+    # apply a default confidence to all class labels if the mapping is not provided
+    if confidence_map is None:
+        confidence_map = {label_id: DEFAULT_CONFIDENCE for label_id in range(N_CLASSES)}
     for cell in cells:
         negative = True
         for label_id, seg_mask in pred_map.items():
             p_intersect = cell.calc_intersect(seg_mask)
             if p_intersect > intersect_cutoff:
-                cell.add_prediction(label_id)
+                confidence = confidence_map[label_id]
+                cell.add_prediction(label_id, confidence)
                 negative = False
         if negative:
-            cell.add_prediction(NEGATIVE_LABEL)
+            cell.add_prediction(NEGATIVE_LABEL, DEFAULT_CONFIDENCE)
     return cells
 
 
