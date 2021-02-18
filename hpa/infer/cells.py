@@ -25,13 +25,12 @@ class Cell:
         intersect_pxls = seg_mask[self.cell_mask].sum()
         return intersect_pxls / self.total_pxls
 
-    def add_prediction(self, label):
-        self.preds.add(label)
+    def add_prediction(self, label, confidence):
+        self.preds.add((label, confidence))
 
     def get_prediction_string(self):
         pred_strings = []
-        confidence = 1  # constant for now
-        for pred_label in self.preds:
+        for pred_label, confidence in self.preds:
             pred_strings.append(f'{pred_label} {confidence} {self.rle_encoding}')
         return ' '.join(pred_strings)
 
