@@ -12,11 +12,13 @@ def get_num_output_features(cnn):
 
 
 class MaxPooledLocalizer(Module):
-    def __init__(self, base_cnn, n_classes):
+    def __init__(self, base_cnn, n_classes, n_hidden_filters=None):
         super().__init__()
         self.base_cnn = base_cnn
-        self.n_base_filters = get_num_output_features(base_cnn)
-        self.final_conv = Conv2d(self.n_base_filters, n_classes, kernel_size=(1, 1), bias=False)
+        self.n_hidden_filters = n_hidden_filters
+        if n_hidden_filters is None:
+            self.n_hidden_filters = get_num_output_features(base_cnn)
+        self.final_conv = Conv2d(self.n_hidden_filters, n_classes, kernel_size=(1, 1), bias=False)
         self.max_pool = AdaptiveMaxPool2d((1, 1))
         self.flatten = Flatten()
 
