@@ -64,6 +64,47 @@ class BaseDataset(Dataset):
         return self.n_samples
 
 
+class RGBYDataset(BaseDataset):
+    def __init__(self, train_idx, data_dir, transforms=None):
+        """Initialization
+
+        Parameters
+        ----------
+        train_idx: pandas.DataFrame
+        data_dir: str
+        transforms: hpa.data.transforms.HPACompose
+        """
+        super().__init__(train_idx, data_dir)
+        self.transforms = transforms
+
+    def __getitem__(self, item):
+        """Retrieve a multichannel image
+
+        Parameters
+        ----------
+        item: int
+
+        Returns
+        -------
+        An array or tensor of the four image filters
+        """
+        channels, label_vec = super().__getitem__(item)
+
+        # stack the channels as RGBY
+        img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
+
+        if self.transforms is not None:
+            img = self.transforms(image=img)['image']
+
+        # convert the data types to floats for all channels
+        if isinstance(img, np.ndarray):
+            img = img.astype(np.float32)
+        elif isinstance(img, torch.Tensor):
+            img = img.float()
+
+        return img, label_vec
+
+
 class IsolatedTargetDataset(BaseDataset):
     def __init__(self, train_idx, data_dir, transforms=None):
         """Initialization
