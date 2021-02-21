@@ -48,9 +48,7 @@ if __name__ == '__main__':
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
-    # train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-sample.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
-    # val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-sample.csv'))
 
     train_data = RGBYDataset(train_idx, DATA_DIR, transforms=transform_fn)
     val_data = RGBYDataset(val_idx, DATA_DIR, transforms=transform_fn)
@@ -86,7 +84,7 @@ if __name__ == '__main__':
 
     criterion = BCEWithLogitsLoss()
     optimizer = AdamW(model.parameters(), lr=LR)
-    # optimizer = Adam(model.final_conv.parameters(), lr=LR)
+    # optimizer = AdamW(model.final_conv.parameters(), lr=LR)
 
     # -------------------------------------------------------------------------------------------
     # Train the model
