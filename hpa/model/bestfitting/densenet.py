@@ -86,10 +86,10 @@ class DensenetClass(nn.Module):
         self.backbone.load_state_dict(state_dict)
 
     def forward(self, x):
-        mean = [0.074598, 0.050630, 0.050891, 0.076287]  # rgby
-        std = [0.122813, 0.085745, 0.129882, 0.119411]
-        for i in range(self.in_channels):
-            x[:, i, :, :] = (x[:, i, :, :] - mean[i]) / std[i]
+        # mean = [0.074598, 0.050630, 0.050891, 0.076287]  # rgby
+        # std = [0.122813, 0.085745, 0.129882, 0.119411]
+        # for i in range(self.in_channels):
+        #     x[:, i, :, :] = (x[:, i, :, :] - mean[i]) / std[i]
 
         x = self.conv1(x)
         if self.large:
