@@ -13,6 +13,7 @@ from hpa.data import RGBYDataset, N_CHANNELS, N_CLASSES
 from hpa.data.transforms import HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
 from hpa.model.localizers import MaxPooledLocalizer
+from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
 from hpa.utils.train import checkpoint, Logger, train_epoch, test_epoch
 
@@ -82,9 +83,9 @@ if __name__ == '__main__':
     model = MaxPooledLocalizer(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024)
     model = model.to(DEVICE)
 
-    criterion = BCEWithLogitsLoss()
+    # criterion = BCEWithLogitsLoss()
+    criterion = FocalSymmetricLovaszHardLogLoss()
     optimizer = AdamW(model.parameters(), lr=LR)
-    # optimizer = AdamW(model.final_conv.parameters(), lr=LR)
 
     # -------------------------------------------------------------------------------------------
     # Train the model
@@ -98,7 +99,7 @@ if __name__ == '__main__':
     N_VAL_BATCHES = int(len(val_data) / BATCH_SIZE)
 
     best_loss = float('inf')
-    logger = Logger(LOGGER_PATH, header=['epoch', 'train_loss', 'val_loss'])
+    logger = Logger(LOGGER_PATH, header=['epoch', 'train_loss', 'val_loss', 'val_bce_loss', 'val_focal_loss'])
     for epoch in range(N_EPOCHS):
         train_loss = train_epoch(model,
                                  train_loader,
@@ -109,16 +110,17 @@ if __name__ == '__main__':
                                  epoch=epoch,
                                  n_batches=N_TRAIN_BATCHES)
 
-        val_loss = test_epoch(model,
-                              val_loader,
-                              criterion,
-                              DEVICE,
-                              progress=True,
-                              epoch=epoch,
-                              n_batches=N_VAL_BATCHES)
+        val_loss, val_bce_loss, val_focal_loss = test_epoch(model,
+                                                            val_loader,
+                                                            criterion,
+                                                            DEVICE,
+                                                            calc_bce=True,
+                                                            calc_focal=True,
+                                                            progress=True,
+                                                            epoch=epoch,
+                                                            n_batches=N_VAL_BATCHES)
 
-        logger.add_entry(epoch, train_loss, val_loss)
-        if val_loss < best_loss:
-            best_loss = val_loss
-            filepath = os.path.join(CHECKPOINT_DIR, f'model{epoch}.pth')
-            checkpoint(model, filepath)
+        logger.add_entry(epoch, train_loss, val_loss, val_bce_loss, val_focal_loss)
+
+        # checkpoint all epochs for now
+        checkpoint(model, os.path.join(CHECKPOINT_DIR, f'model{epoch}.pth'))
