@@ -23,7 +23,7 @@ def assign_cell_labels(cells, pred_map, intersect_cutoff, confidence_map=None):
 def get_percent_labeled_cells(cells, verbose=True):
     count = 0
     for cell in cells:
-        if sorted(list(cell.preds))[0] != 18:
+        if list(cell.preds)[0][0] != 18:
             count += 1
     if verbose:
         print(f'{round(100 * count / len(cells), 2)}% of cells labeled')
@@ -32,4 +32,7 @@ def get_percent_labeled_cells(cells, verbose=True):
 
 def print_assigned_labels(cells):
     for cell in cells:
-        print(f'Cell {cell.cell_id}: {sorted(list(cell.preds))}')
+        labels, confidences = zip(*sorted(list(cell.preds)))
+        print(f'Cell {cell.cell_id}')
+        print(f'Labels: {labels}')
+        print(f'Confidences: {confidences}\n')
