@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-0.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-3.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -106,6 +106,7 @@ if __name__ == '__main__':
                                  criterion,
                                  optimizer,
                                  DEVICE,
+                                 clip_grad_value=1,
                                  progress=True,
                                  epoch=epoch,
                                  n_batches=N_TRAIN_BATCHES)
