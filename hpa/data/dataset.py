@@ -1,5 +1,6 @@
 import os
 
+from albumentations.pytorch import ToTensorV2
 from PIL import Image, ImageFile
 import numpy as np
 import torch
@@ -22,6 +23,15 @@ def load_channels(img_id, img_dir):
     return imgs
 
 
+def get_label_vector(labels):
+    label_vec = np.zeros(N_CLASSES - 1, dtype=np.float32)
+    labels = parse_string_label(labels)
+    for i in labels:
+        if i != 18:
+            label_vec[i] = 1
+    return label_vec
+
+
 class BaseDataset(Dataset):
     def __init__(self, train_idx, data_dir):
         """Initialization
@@ -36,6 +46,9 @@ class BaseDataset(Dataset):
         self.data_dir = data_dir
         self.n_samples = len(train_idx)
 
+    def get_img_id_and_label(self, item):
+        return self.data_idx.loc[item, ['ID', 'Label']]
+
     def __getitem__(self, item):
         """Retrieve a multichannel image
 
@@ -47,19 +60,10 @@ class BaseDataset(Dataset):
         -------
         An array or tensor of the four image filters
         """
-        image_id, labels = self.data_idx.loc[item, ['ID', 'Label']]
-
-        # load and stack the images
+        image_id, labels = self.get_img_id_and_label(item)
         channels = load_channels(image_id, self.data_dir)
-
-        # define a binary vector for the labels
-        label_vec = np.zeros(N_CLASSES - 1, dtype=np.float32)
-        labels = parse_string_label(labels)
-        for i in labels:
-            if i != 18:
-                label_vec[i] = 1
-
-        return channels, label_vec
+        label_vec = get_label_vector(labels)
+        return image_id, channels, label_vec
 
     def __len__(self):
         return self.n_samples
@@ -89,7 +93,7 @@ class RGBYDataset(BaseDataset):
         -------
         An array or tensor of the four image filters
         """
-        channels, label_vec = super().__getitem__(item)
+        _, channels, label_vec = super().__getitem__(item)
 
         # stack the channels as RGBY
         img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
@@ -102,8 +106,65 @@ class RGBYDataset(BaseDataset):
             img = img.astype(np.float32)
         elif isinstance(img, torch.Tensor):
             img = img.float()
-
         return img, label_vec
+
+
+class RGBYWithSegmentation(BaseDataset):
+    def __init__(self,
+                 train_idx,
+                 data_dir,
+                 seg_dir,
+                 dual_transforms=None,
+                 img_transforms=None,
+                 seg_transforms=None,
+                 tensorize=True):
+        super().__init__(train_idx, data_dir)
+        self.seg_dir = seg_dir
+
+        self.dual_transforms = dual_transforms
+        self.img_transforms = img_transforms
+        self.seg_transforms = seg_transforms
+
+        if tensorize:
+            self.tensorize = ToTensorV2()
+        else:
+            self.tensorize = None
+
+    def __getitem__(self, item):
+        img_id, channels, label_vec = super().__getitem__(item)
+
+        # stack the channels as RGBY
+        img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
+
+        # load the segmentation map
+        seg = np.load(os.path.join(self.seg_dir, f'{img_id}.npz'))['arr_0']
+
+        if self.dual_transforms is not None:
+            aug_result = self.dual_transforms(image=img, mask=seg)
+            img = aug_result['image']
+            seg = aug_result['mask']
+
+        if self.img_transforms is not None:
+            img = self.img_transforms(image=img)['image']
+
+        if self.seg_transforms is not None:
+            seg = self.seg_transforms(image=seg)['image']
+
+        if self.tensorize is not None:
+            img = self.tensorize(image=img)['image']
+            seg = self.tensorize(image=seg)['image']
+
+        # convert the data types to floats for all channels
+        if isinstance(img, np.ndarray):
+            img = img.astype(np.float32)
+        elif isinstance(img, torch.Tensor):
+            img = img.float()
+
+        return img, seg, label_vec
+
+# ----------------------------------------------------------------------------------------------------------------------
+# OLD STUFF
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 class IsolatedTargetDataset(BaseDataset):
