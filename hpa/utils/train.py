@@ -135,10 +135,10 @@ def test_epoch(model,
 
             if calc_bce:
                 bce_loss = bce_fn(output, batch_label)
-                avg_bce_loss.append(bce_loss)
+                avg_bce_loss.append(bce_loss.item())
             if calc_focal:
                 focal_loss = focal_fn(output, batch_label)
-                avg_focal_loss.append(focal_loss)
+                avg_focal_loss.append(focal_loss.item())
 
     # package the results and return
     result = [sum(avg_loss) / len(avg_loss)]

@@ -13,7 +13,7 @@ try:
 except ImportError:  # py3k
     from itertools import filterfalse
 
-NUM_CLASSES = 28
+NUM_CLASSES = 18
 
 
 def lovasz_grad(gt_sorted):
