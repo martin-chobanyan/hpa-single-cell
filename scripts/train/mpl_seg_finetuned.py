@@ -4,7 +4,7 @@ from yaml import safe_load
 import albumentations as A
 import pandas as pd
 import torch
-from torch.nn import ReLU, Sequential
+from torch.nn import BCELoss, ReLU, Sequential
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
@@ -14,7 +14,7 @@ from hpa.model.bestfitting.densenet import DensenetClass
 from hpa.model.localizers import MaxPooledLocalizer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
-from hpa.utils.train import checkpoint, Logger, train_epoch, test_epoch
+from hpa.utils.train import checkpoint, Logger, train_epoch_with_segmentation, test_epoch_with_segmentation
 
 if __name__ == '__main__':
     print('Training a weakly-supervised max-pooled localizer with pretrained encoder')
@@ -22,7 +22,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-3.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-0.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -99,11 +99,15 @@ if __name__ == '__main__':
                                   ReLU())
 
     # define the localizer model
-    model = MaxPooledLocalizer(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024)
+    model = MaxPooledLocalizer(densenet_encoder,
+                               n_classes=N_CLASSES - 1,
+                               n_hidden_filters=1024,
+                               merge_classes=True,
+                               seg_shape=(img_dim, img_dim))
     model = model.to(DEVICE)
 
-    # criterion = BCEWithLogitsLoss()
-    criterion = FocalSymmetricLovaszHardLogLoss()
+    classify_criterion = FocalSymmetricLovaszHardLogLoss()
+    segment_criterion = BCELoss()
     optimizer = AdamW(model.parameters(), lr=LR)
 
     # -------------------------------------------------------------------------------------------
@@ -117,30 +121,51 @@ if __name__ == '__main__':
     N_TRAIN_BATCHES = int(len(train_data) / BATCH_SIZE)
     N_VAL_BATCHES = int(len(val_data) / BATCH_SIZE)
 
+    W_CLASSIFY = config['model']['classify_weight']
+    W_SEGMENT = config['model']['segment_weight']
+
+    header = [
+        'epoch',
+        'train_loss',
+        'train_classify_loss',
+        'train_segment_loss',
+        'val_loss',
+        'val_classify_loss',
+        'val_segment_loss',
+        'val_bce_loss',
+        'val_focal_loss'
+    ]
+    logger = Logger(LOGGER_PATH, header=header)
+
     best_loss = float('inf')
-    logger = Logger(LOGGER_PATH, header=['epoch', 'train_loss', 'val_loss', 'val_bce_loss', 'val_focal_loss'])
     for epoch in range(N_EPOCHS):
-        train_loss = train_epoch(model,
-                                 train_loader,
-                                 criterion,
-                                 optimizer,
-                                 DEVICE,
-                                 clip_grad_value=1,
-                                 progress=True,
-                                 epoch=epoch,
-                                 n_batches=N_TRAIN_BATCHES)
+        train_results = train_epoch_with_segmentation(model,
+                                                      train_loader,
+                                                      classify_criterion,
+                                                      segment_criterion,
+                                                      optimizer,
+                                                      DEVICE,
+                                                      W_CLASSIFY,
+                                                      W_SEGMENT,
+                                                      clip_grad_value=1,
+                                                      progress=True,
+                                                      epoch=epoch,
+                                                      n_batches=N_TRAIN_BATCHES)
 
-        val_loss, val_bce_loss, val_focal_loss = test_epoch(model,
-                                                            val_loader,
-                                                            criterion,
-                                                            DEVICE,
-                                                            calc_bce=True,
-                                                            calc_focal=True,
-                                                            progress=True,
-                                                            epoch=epoch,
-                                                            n_batches=N_VAL_BATCHES)
+        val_results = test_epoch_with_segmentation(model,
+                                                   val_loader,
+                                                   classify_criterion,
+                                                   segment_criterion,
+                                                   DEVICE,
+                                                   W_CLASSIFY,
+                                                   W_SEGMENT,
+                                                   calc_bce=True,
+                                                   calc_focal=True,
+                                                   progress=True,
+                                                   epoch=epoch,
+                                                   n_batches=N_VAL_BATCHES)
 
-        logger.add_entry(epoch, train_loss, val_loss, val_bce_loss, val_focal_loss)
+        logger.add_entry(epoch, *train_results, *val_results)
 
         # checkpoint all epochs for now
         checkpoint(model, os.path.join(CHECKPOINT_DIR, f'model{epoch}.pth'))

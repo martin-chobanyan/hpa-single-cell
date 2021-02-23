@@ -1,4 +1,5 @@
 import csv
+from statistics import mean
 
 import torch
 from torch.nn import BCEWithLogitsLoss
@@ -82,7 +83,7 @@ def train_epoch(model,
             clip_grad_norm_(model.parameters(), clip_grad_value)
         optimizer.step()
         avg_loss.append(loss.item())
-    return sum(avg_loss) / len(avg_loss)
+    return mean(avg_loss)
 
 
 def test_epoch(model,
@@ -141,13 +142,151 @@ def test_epoch(model,
                 avg_focal_loss.append(focal_loss.item())
 
     # package the results and return
-    result = [sum(avg_loss) / len(avg_loss)]
+    result = [mean(avg_loss)]
     if calc_bce:
-        result.append(sum(avg_bce_loss) / len(avg_bce_loss))
+        result.append(mean(avg_bce_loss))
     if calc_focal:
-        result.append(sum(avg_focal_loss) / len(avg_focal_loss))
+        result.append(mean(avg_focal_loss))
     if len(result) == 1:
         return result[0]
+    return tuple(result)
+
+
+def train_epoch_with_segmentation(model,
+                                  dataloader,
+                                  classify_criterion,
+                                  segment_criterion,
+                                  optimizer,
+                                  device,
+                                  w_classify=0.5,
+                                  w_segment=0.5,
+                                  clip_grad_value=None,
+                                  progress=False,
+                                  epoch=None,
+                                  n_batches=None):
+    """Train the model for an epoch
+
+    Parameters
+    ----------
+    model: nn.Module
+    dataloader: DataLoader
+    classify_criterion: callable loss function
+    optimizer: pytorch optimizer
+    device: str or torch.device
+    clip_grad_value: float, optional
+    progress: bool, optional
+    epoch: int, optional
+    n_batches: int, optional
+
+    Returns
+    -------
+    tuple
+    """
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
+    else:
+        generator = dataloader
+
+    avg_loss = []
+    avg_classify_loss = []
+    avg_segment_loss = []
+    model.train()
+    for batch_image, batch_seg, batch_label in generator:
+        batch_image = batch_image.to(device)
+        batch_seg = batch_seg.to(device)
+        batch_label = batch_label.to(device)
+
+        optimizer.zero_grad()
+        class_scores, pred_seg = model(batch_image)
+
+        classify_loss = classify_criterion(class_scores, batch_label)
+        segment_loss = segment_criterion(pred_seg, batch_seg)
+        loss = w_classify * classify_loss + w_segment * segment_loss
+
+        loss.backward()
+        if clip_grad_value is not None:
+            clip_grad_norm_(model.parameters(), clip_grad_value)
+        optimizer.step()
+
+        avg_loss.append(loss.item())
+        avg_classify_loss.append(classify_loss.item())
+        avg_segment_loss.append(segment_loss.item())
+    return mean(avg_loss), mean(avg_classify_loss), mean(avg_segment_loss)
+
+
+def test_epoch_with_segmentation(model,
+                                 dataloader,
+                                 classify_criterion,
+                                 segment_criterion,
+                                 device,
+                                 w_classify=0.5,
+                                 w_segment=0.5,
+                                 calc_bce=False,
+                                 calc_focal=False,
+                                 progress=False,
+                                 epoch=None,
+                                 n_batches=None):
+    """Run the model for a test epoch
+
+    Parameters
+    ----------
+    model: nn.Module
+    dataloader: DataLoader
+    criterion: callable loss function
+    device: str or torch.device
+    progress: bool, optional
+    epoch: int, optional
+    n_batches: int, optional
+
+    Returns
+    -------
+    tuple
+    """
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (testing)', total=n_batches)
+    else:
+        generator = dataloader
+
+    if calc_bce:
+        bce_fn = BCEWithLogitsLoss()
+        avg_bce_loss = []
+    if calc_focal:
+        focal_fn = FocalLoss()
+        avg_focal_loss = []
+
+    avg_loss = []
+    avg_classify_loss = []
+    avg_segment_loss = []
+    model.eval()
+    with torch.no_grad():
+        for batch_image, batch_seg, batch_label in generator:
+            batch_image = batch_image.to(device)
+            batch_seg = batch_seg.to(device)
+            batch_label = batch_label.to(device)
+
+            class_scores, pred_seg = model(batch_image)
+
+            classify_loss = classify_criterion(class_scores, batch_label)
+            segment_loss = segment_criterion(pred_seg, batch_seg)
+            loss = w_classify * classify_loss + w_segment * segment_loss
+
+            avg_loss.append(loss.item())
+            avg_classify_loss.append(classify_loss.item())
+            avg_segment_loss.append(segment_loss.item())
+
+            if calc_bce:
+                bce_loss = bce_fn(class_scores, batch_label)
+                avg_bce_loss.append(bce_loss.item())
+            if calc_focal:
+                focal_loss = focal_fn(class_scores, batch_label)
+                avg_focal_loss.append(focal_loss.item())
+
+    # package the results and return
+    result = [mean(avg_loss), mean(avg_classify_loss), mean(avg_segment_loss)]
+    if calc_bce:
+        result.append(mean(avg_bce_loss))
+    if calc_focal:
+        result.append(mean(avg_focal_loss))
     return tuple(result)
 
 
