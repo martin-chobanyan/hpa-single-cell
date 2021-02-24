@@ -6,7 +6,6 @@ import gzip
 import shutil
 
 import imageio
-
 import pandas as pd
 from tqdm import tqdm
 
@@ -18,9 +17,26 @@ def download_jpg(url, target_path):
         shutil.copyfileobj(r.raw, file)
 
 
+def tif_gzip_to_png(tif_path):
+    """Function to convert .tif.gz to .png and put it in the same folder"""
+    png_path = pathlib.Path(tif_path.replace('.tif.gz', '.png'))
+    tf = gzip.open(tif_path).read()
+    img = imageio.imread(tf, 'tiff')
+    imageio.imwrite(png_path, img)
+
+
+def download_and_convert_tifgzip_to_png(url, target_path):
+    """Function to convert .tif.gz to .png and put it in the same folder"""
+    r = requests.get(url)
+    f = io.BytesIO(r.content)
+    tf = gzip.open(f).read()
+    img = imageio.imread(tf, 'tiff')
+    imageio.imwrite(target_path, img)
+
+
 if __name__ == '__main__':
 
-    SAVE_DIR = '/home/mchobanyan/data/kaggle/hpa-single-cell/misc/public-hpa/data/'
+    SAVE_DIR = '/home/mchobanyan/data/kaggle/hpa-single-cell/misc/public-hpa/data2/'
     COLORS = ['blue', 'red', 'green', 'yellow']
 
     CLASS_NAMES = [
@@ -124,8 +140,8 @@ if __name__ == '__main__':
     for base_url in tqdm(data_idx['Image'], desc='Downloading data'):
         try:
             for color in COLORS:
-                img_url = f'{base_url}_{color}.jpg'
+                img_url = f'{base_url}_{color}.tif.gz'
                 save_path = os.path.join(SAVE_DIR, f'{os.path.basename(base_url)}_{color}.png')
-                download_jpg(img_url, save_path)
+                download_and_convert_tifgzip_to_png(img_url, save_path)
         except:
             print(f'failed to download: {base_url}')
