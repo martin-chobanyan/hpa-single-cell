@@ -8,8 +8,8 @@ from torch.nn import BCELoss, ReLU, Sequential
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
-from hpa.data import RGBYWithSegmentation, N_CHANNELS, N_CLASSES
-from hpa.data.transforms import HPACompose, ToBinaryCellSegmentation
+from hpa.data import RGBYWithGreenTarget, N_CHANNELS, N_CLASSES
+from hpa.data.transforms import HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
 from hpa.model.localizers import MaxPooledLocalizer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
@@ -22,7 +22,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-0.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-1.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -34,7 +34,6 @@ if __name__ == '__main__':
     dual_train_transform_fn = HPACompose([
         A.Resize(img_dim, img_dim),
         A.Flip(p=0.5),
-        A.ShiftScaleRotate(p=0.5),
     ])
 
     dual_val_transform_fn = A.Resize(img_dim, img_dim)
@@ -44,8 +43,6 @@ if __name__ == '__main__':
         std=[0.122813, 0.085745, 0.129882, 0.119411],
         max_pixel_value=255
     )
-
-    seg_transform_fn = ToBinaryCellSegmentation()
 
     # -------------------------------------------------------------------------------------------
     # Prepare the data
@@ -57,21 +54,19 @@ if __name__ == '__main__':
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    train_data = RGBYWithSegmentation(train_idx,
-                                      DATA_DIR,
-                                      SEG_DIR,
-                                      dual_train_transform_fn,
-                                      img_transform_fn,
-                                      seg_transform_fn,
-                                      tensorize=True)
+    train_data = RGBYWithGreenTarget(train_idx,
+                                     DATA_DIR,
+                                     SEG_DIR,
+                                     dual_train_transform_fn,
+                                     img_transform_fn,
+                                     tensorize=True)
 
-    val_data = RGBYWithSegmentation(val_idx,
-                                    DATA_DIR,
-                                    SEG_DIR,
-                                    dual_val_transform_fn,
-                                    img_transform_fn,
-                                    seg_transform_fn,
-                                    tensorize=True)
+    val_data = RGBYWithGreenTarget(val_idx,
+                                   DATA_DIR,
+                                   SEG_DIR,
+                                   dual_val_transform_fn,
+                                   img_transform_fn,
+                                   tensorize=True)
 
     BATCH_SIZE = config['data']['batch_size']
     train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
