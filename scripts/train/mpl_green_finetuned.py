@@ -36,7 +36,9 @@ if __name__ == '__main__':
         A.Flip(p=0.5),
     ])
 
-    dual_val_transform_fn = A.Resize(img_dim, img_dim)
+    dual_val_transform_fn = HPACompose([
+        A.Resize(img_dim, img_dim)
+    ])
 
     img_transform_fn = A.Normalize(
         mean=[0.074598, 0.050630, 0.050891, 0.076287],
@@ -95,7 +97,7 @@ if __name__ == '__main__':
 
     # define the localizer model
     model = MaxPooledLocalizer(densenet_encoder,
-                               n_classes=N_CLASSES - 1,
+                               n_classes=N_CLASSES,
                                n_hidden_filters=1024,
                                merge_classes=True,
                                seg_shape=(img_dim, img_dim))
