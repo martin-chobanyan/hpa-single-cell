@@ -25,11 +25,10 @@ def load_channels(img_id, img_dir):
 
 
 def get_label_vector(labels):
-    label_vec = np.zeros(N_CLASSES - 1, dtype=np.float32)
+    label_vec = np.zeros(N_CLASSES, dtype=np.float32)
     labels = parse_string_label(labels)
     for i in labels:
-        if i != 18:
-            label_vec[i] = 1
+        label_vec[i] = 1
     return label_vec
 
 
