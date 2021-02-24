@@ -7,6 +7,7 @@ import torch
 from torch.utils.data import Dataset
 
 from .misc import parse_string_label
+from .transforms import ToBinaryCellSegmentation
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 N_CHANNELS = 4
@@ -163,6 +164,65 @@ class RGBYWithSegmentation(BaseDataset):
             seg = self.tensorize(image=seg)['image']
 
         return img, seg, label_vec
+
+
+class RGBYWithGreenTarget(BaseDataset):
+    def __init__(self,
+                 train_idx,
+                 data_dir,
+                 seg_dir,
+                 dual_transforms=None,
+                 img_transforms=None,
+                 tensorize=True):
+        super().__init__(train_idx, data_dir)
+        self.seg_dir = seg_dir
+
+        self.dual_transforms = dual_transforms
+        self.img_transforms = img_transforms
+        self.seg_transforms = ToBinaryCellSegmentation()
+
+        if tensorize:
+            self.tensorize = ToTensorV2()
+        else:
+            self.tensorize = None
+
+    def __getitem__(self, item):
+        img_id, channels, label_vec = super().__getitem__(item)
+
+        # stack the channels as RGBY
+        img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
+        green = img[..., 1]
+
+        # load the segmentation map
+        seg = np.load(os.path.join(self.seg_dir, f'{img_id}.npz'))['arr_0']
+
+        if self.dual_transforms is not None:
+            aug_result = self.dual_transforms(image=img, mask=seg, extra=green)
+            img = aug_result['image']
+            seg = aug_result['mask']
+            green = aug_result['extra']
+
+        if self.img_transforms is not None:
+            img = self.img_transforms(image=img)['image']
+
+        if self.seg_transforms is not None:
+            seg = self.seg_transforms(image=seg)['image']
+
+        # normalize the green channel to be in range [0, 1]
+        # and mask out the background in the green channel by using the segmentation mask
+        green = green.astype(np.float32)
+        green = (green / 255) * seg
+
+        # convert the data types to floats for all channels
+        if isinstance(img, np.ndarray):
+            img = img.astype(np.float32)
+        elif isinstance(img, torch.Tensor):
+            img = img.float()
+
+        if self.tensorize is not None:
+            img = self.tensorize(image=img)['image']
+            green = self.tensorize(image=green)['image']
+        return img, green, label_vec
 
 
 # ----------------------------------------------------------------------------------------------------------------------

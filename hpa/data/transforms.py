@@ -4,7 +4,7 @@ import numpy as np
 
 class HPACompose(A.Compose):
     def __init__(self, transforms, *args, **kwargs):
-        super().__init__(transforms, additional_targets={'ref': 'image'}, *args, **kwargs)
+        super().__init__(transforms, additional_targets={'extra': 'image'}, *args, **kwargs)
 
 
 class ToBinaryCellSegmentation(A.ImageOnlyTransform):
