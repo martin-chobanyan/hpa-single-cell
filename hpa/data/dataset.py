@@ -150,17 +150,20 @@ class RGBYWithSegmentation(BaseDataset):
         if self.seg_transforms is not None:
             seg = self.seg_transforms(image=seg)['image']
 
+        # convert the data types to floats for all channels
+        if isinstance(img, np.ndarray):
+            img = img.astype(np.float32)
+            seg = seg.astype(np.float32)
+        elif isinstance(img, torch.Tensor):
+            img = img.float()
+            seg = seg.float()
+
         if self.tensorize is not None:
             img = self.tensorize(image=img)['image']
             seg = self.tensorize(image=seg)['image']
 
-        # convert the data types to floats for all channels
-        if isinstance(img, np.ndarray):
-            img = img.astype(np.float32)
-        elif isinstance(img, torch.Tensor):
-            img = img.float()
-
         return img, seg, label_vec
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # OLD STUFF
