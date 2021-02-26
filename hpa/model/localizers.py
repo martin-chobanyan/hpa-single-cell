@@ -48,17 +48,26 @@ class MergeClassHeatmaps(Module):
 
 
 class MaxPooledLocalizer(Module):
-    def __init__(self, base_cnn, n_classes, n_hidden_filters=None, merge_classes=False, seg_shape=None):
+    def __init__(self,
+                 base_cnn,
+                 n_classes,
+                 n_hidden_filters=None,
+                 deep_final_conv=True,
+                 merge_classes=False,
+                 seg_shape=None):
         super().__init__()
         self.base_cnn = base_cnn
         self.n_hidden_filters = n_hidden_filters
         if n_hidden_filters is None:
             self.n_hidden_filters = get_num_output_features(base_cnn)
-        # self.final_conv = Conv2d(self.n_hidden_filters, n_classes, kernel_size=(1, 1), bias=False)
-        self.final_conv_block = Sequential(
-            ConvBlock(self.n_hidden_filters, int(self.n_hidden_filters / 2), kernel_size=3),
-            Conv2d(int(self.n_hidden_filters / 2), n_classes, kernel_size=1, bias=False)
-        )
+
+        if deep_final_conv:
+            self.final_conv_block = Sequential(
+                ConvBlock(self.n_hidden_filters, self.n_hidden_filters, kernel_size=1),
+                Conv2d(self.n_hidden_filters, n_classes, kernel_size=1, bias=False)
+            )
+        else:
+            self.final_conv_block = Conv2d(self.n_hidden_filters, n_classes, kernel_size=(1, 1), bias=False)
 
         self.max_pool = AdaptiveMaxPool2d((1, 1))
         self.flatten = Flatten()
@@ -71,7 +80,6 @@ class MaxPooledLocalizer(Module):
 
     def forward(self, x):
         feature_maps = self.base_cnn(x)
-        # class_maps = self.final_conv(feature_maps)
         class_maps = self.final_conv_block(feature_maps)
         class_scores = self.max_pool(class_maps)
         class_scores = self.flatten(class_scores)
