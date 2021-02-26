@@ -1,5 +1,5 @@
 import torch
-from torch.nn import AdaptiveMaxPool2d, Conv2d, Flatten, Module, Upsample
+from torch.nn import AdaptiveMaxPool2d, BatchNorm2d, Conv2d, Flatten, Module, ReLU, Sequential, Upsample
 
 
 def get_num_output_features(cnn):
@@ -10,6 +10,28 @@ def get_num_output_features(cnn):
     if final_conv is None:
         raise ValueError('The input model has no Conv2d layers!')
     return final_conv.out_channels
+
+
+class ConvBlock(Module):
+    def __init__(self, in_channels, out_channels, kernel_size, bnorm=True, relu=True, bias=True):
+        super().__init__()
+        self.conv = Conv2d(in_channels, out_channels, kernel_size, bias=bias)
+
+        self.bnorm = None
+        if bnorm:
+            self.bnorm = BatchNorm2d(out_channels)
+
+        self.relu = None
+        if relu:
+            self.relu = ReLU()
+
+    def forward(self, x):
+        x = self.conv(x)
+        if self.bnorm is not None:
+            x = self.bnorm(x)
+        if self.relu is not None:
+            x = self.relu(x)
+        return x
 
 
 class MergeClassHeatmaps(Module):
@@ -32,7 +54,12 @@ class MaxPooledLocalizer(Module):
         self.n_hidden_filters = n_hidden_filters
         if n_hidden_filters is None:
             self.n_hidden_filters = get_num_output_features(base_cnn)
-        self.final_conv = Conv2d(self.n_hidden_filters, n_classes, kernel_size=(1, 1), bias=False)
+        # self.final_conv = Conv2d(self.n_hidden_filters, n_classes, kernel_size=(1, 1), bias=False)
+        self.final_conv_block = Sequential(
+            ConvBlock(self.n_hidden_filters, int(self.n_hidden_filters / 2), kernel_size=3),
+            Conv2d(int(self.n_hidden_filters / 2), n_classes, kernel_size=1, bias=False)
+        )
+
         self.max_pool = AdaptiveMaxPool2d((1, 1))
         self.flatten = Flatten()
 
@@ -44,7 +71,8 @@ class MaxPooledLocalizer(Module):
 
     def forward(self, x):
         feature_maps = self.base_cnn(x)
-        class_maps = self.final_conv(feature_maps)
+        # class_maps = self.final_conv(feature_maps)
+        class_maps = self.final_conv_block(feature_maps)
         class_scores = self.max_pool(class_maps)
         class_scores = self.flatten(class_scores)
 

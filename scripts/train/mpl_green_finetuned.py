@@ -22,7 +22,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-1.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-2.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -58,14 +58,12 @@ if __name__ == '__main__':
 
     train_data = RGBYWithGreenTarget(train_idx,
                                      DATA_DIR,
-                                     SEG_DIR,
                                      dual_train_transform_fn,
                                      img_transform_fn,
                                      tensorize=True)
 
     val_data = RGBYWithGreenTarget(val_idx,
                                    DATA_DIR,
-                                   SEG_DIR,
                                    dual_val_transform_fn,
                                    img_transform_fn,
                                    tensorize=True)
