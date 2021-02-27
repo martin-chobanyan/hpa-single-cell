@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def four_tile_mean(top_left, bottom_left, top_right, bottom_right, img_dim):
+def stitch_four_tile_predictions(top_left, bottom_left, top_right, bottom_right, img_dim):
     """Take the average of four tiled predictions for each of the four corners
 
     Assumes that the tiles are shaped (num_classes, tile_dim, tile_dim)
