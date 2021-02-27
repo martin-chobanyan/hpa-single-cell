@@ -48,7 +48,9 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
-    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
+    EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'misc', 'public-hpa', 'data2')
+
+    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'full-train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
     train_data = RGBYDataset(train_idx, DATA_DIR, transforms=transform_fn)

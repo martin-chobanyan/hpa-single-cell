@@ -21,7 +21,7 @@ def stitch_four_tile_predictions(top_left, bottom_left, top_right, bottom_right,
         A numpy array of shape (num_classes, img_dim, img_dim) where the tiles are stitched together and
         averaged over their overlapping regions
     """
-    assert top_left.shape == bottom_left.shape == top_right.shape == bottom_right.shape
+    assert top_left.shape == bottom_left.shape == top_right.shape == bottom_right.shape, 'Tile shapes do not match!'
     num_classes, tile_dim, _ = top_left.shape
 
     # pad the tiles so that they match the image dimension and stack them together

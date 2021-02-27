@@ -33,7 +33,7 @@ def get_label_vector(labels):
 
 
 class BaseDataset(Dataset):
-    def __init__(self, train_idx, data_dir):
+    def __init__(self, train_idx, data_dir, external_data_dir=None):
         """Initialization
 
         Parameters
@@ -44,6 +44,7 @@ class BaseDataset(Dataset):
         super().__init__()
         self.data_idx = train_idx
         self.data_dir = data_dir
+        self.external_data_dir = external_data_dir
         self.n_samples = len(train_idx)
 
     def get_img_id_and_label(self, item):
@@ -61,7 +62,13 @@ class BaseDataset(Dataset):
         An array or tensor of the four image filters
         """
         image_id, labels = self.get_img_id_and_label(item)
-        channels = load_channels(image_id, self.data_dir)
+
+        if (self.external_data_dir is not None) and (self.data_idx.at[item, 'Source'] == 'external'):
+            data_dir = self.external_data_dir
+        else:
+            data_dir = self.data_dir
+
+        channels = load_channels(image_id, data_dir)
         label_vec = get_label_vector(labels)
         return image_id, channels, label_vec
 
@@ -70,7 +77,7 @@ class BaseDataset(Dataset):
 
 
 class RGBYDataset(BaseDataset):
-    def __init__(self, train_idx, data_dir, transforms=None):
+    def __init__(self, train_idx, data_dir, external_data_dir=None, transforms=None):
         """Initialization
 
         Parameters
@@ -79,7 +86,7 @@ class RGBYDataset(BaseDataset):
         data_dir: str
         transforms: hpa.data.transforms.HPACompose
         """
-        super().__init__(train_idx, data_dir)
+        super().__init__(train_idx, data_dir, external_data_dir)
         self.transforms = transforms
 
     def __getitem__(self, item):
@@ -114,11 +121,12 @@ class RGBYWithSegmentation(BaseDataset):
                  train_idx,
                  data_dir,
                  seg_dir,
+                 external_data_dir=None,
                  dual_transforms=None,
                  img_transforms=None,
                  seg_transforms=None,
                  tensorize=True):
-        super().__init__(train_idx, data_dir)
+        super().__init__(train_idx, data_dir, external_data_dir)
         self.seg_dir = seg_dir
 
         self.dual_transforms = dual_transforms
@@ -169,10 +177,11 @@ class RGBYWithGreenTarget(BaseDataset):
     def __init__(self,
                  train_idx,
                  data_dir,
+                 external_data_dir=None,
                  dual_transforms=None,
                  img_transforms=None,
                  tensorize=True):
-        super().__init__(train_idx, data_dir)
+        super().__init__(train_idx, data_dir, external_data_dir)
         self.dual_transforms = dual_transforms
         self.img_transforms = img_transforms
         if tensorize:
@@ -217,7 +226,7 @@ class RGBYWithGreenTarget(BaseDataset):
 
 
 class IsolatedTargetDataset(BaseDataset):
-    def __init__(self, train_idx, data_dir, transforms=None):
+    def __init__(self, train_idx, data_dir, external_data_dir=None, transforms=None):
         """Initialization
 
         Parameters
@@ -226,7 +235,7 @@ class IsolatedTargetDataset(BaseDataset):
         data_dir: str
         transforms: hpa.data.transforms.HPACompose
         """
-        super().__init__(train_idx, data_dir)
+        super().__init__(train_idx, data_dir, external_data_dir)
         self.transforms = transforms
 
     def __getitem__(self, item):
