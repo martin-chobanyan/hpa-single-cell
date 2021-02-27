@@ -5,7 +5,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import pandas as pd
 import torch
-from torch.nn import BCEWithLogitsLoss, ReLU, Sequential
+from torch.nn import ReLU, Sequential
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-3.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-4.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -80,10 +80,9 @@ if __name__ == '__main__':
                                   ReLU())
 
     # define the localizer model
-    model = MaxPooledLocalizer(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024)
+    model = MaxPooledLocalizer(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024, deep_final_conv=True)
     model = model.to(DEVICE)
 
-    # criterion = BCEWithLogitsLoss()
     criterion = FocalSymmetricLovaszHardLogLoss()
     optimizer = AdamW(model.parameters(), lr=LR)
 
