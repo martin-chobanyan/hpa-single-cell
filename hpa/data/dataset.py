@@ -19,7 +19,11 @@ def load_channels(img_id, img_dir):
     for color in ('blue', 'green', 'red', 'yellow'):
         filename = f'{img_id}_{color}.png'
         filepath = os.path.join(img_dir, filename)
-        imgs[color] = np.array(Image.open(filepath))
+        channel = np.array(Image.open(filepath))
+        if channel.dtype == np.int32:
+            channel = 255 * (channel / 65535)
+            channel = channel.astype(np.uint8)
+        imgs[color] = channel
     return imgs
 
 

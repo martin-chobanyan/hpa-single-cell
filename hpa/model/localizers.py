@@ -52,7 +52,7 @@ class MaxPooledLocalizer(Module):
                  base_cnn,
                  n_classes,
                  n_hidden_filters=None,
-                 deep_final_conv=True,
+                 deep_final_conv=False,
                  merge_classes=False,
                  seg_shape=None):
         super().__init__()

@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-4.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-5.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'full-train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    train_data = RGBYDataset(train_idx, DATA_DIR, transforms=transform_fn)
+    train_data = RGBYDataset(train_idx, DATA_DIR, external_data_dir=EXTERNAL_DATA_DIR, transforms=transform_fn)
     val_data = RGBYDataset(val_idx, DATA_DIR, transforms=transform_fn)
 
     BATCH_SIZE = config['data']['batch_size']
@@ -82,7 +82,7 @@ if __name__ == '__main__':
                                   ReLU())
 
     # define the localizer model
-    model = MaxPooledLocalizer(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024, deep_final_conv=True)
+    model = MaxPooledLocalizer(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024)
     model = model.to(DEVICE)
 
     criterion = FocalSymmetricLovaszHardLogLoss()
