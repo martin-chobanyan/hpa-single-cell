@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-5.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-6.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -68,10 +68,13 @@ if __name__ == '__main__':
     N_EPOCHS = config['model']['epochs']
     PRETRAINED_PATH = config['pretrained_path']
 
-    # load the pretrained DenseNet model
-    pretrained_state_dict = torch.load(PRETRAINED_PATH)['state_dict']
     densenet_model = DensenetClass(in_channels=N_CHANNELS, dropout=True)
-    densenet_model.load_state_dict(pretrained_state_dict)
+
+    # load the pretrained DenseNet model
+    if PRETRAINED_PATH != '':
+        print('Loading pre-trained model')
+        pretrained_state_dict = torch.load(PRETRAINED_PATH)['state_dict']
+        densenet_model.load_state_dict(pretrained_state_dict)
 
     # isolate the CNN encoder
     densenet_encoder = Sequential(densenet_model.conv1,
