@@ -105,6 +105,12 @@ if __name__ == '__main__':
     best_loss = float('inf')
     logger = Logger(LOGGER_PATH, header=['epoch', 'train_loss', 'val_loss', 'val_bce_loss', 'val_focal_loss'])
     for epoch in range(N_EPOCHS):
+
+        if epoch == 5:
+            optimizer = AdamW(model.parameters(), lr=0.0001)
+        if epoch == 15:
+            optimizer = AdamW(model.parameters(), lr=0.00001)
+
         train_loss = train_epoch(model,
                                  train_loader,
                                  criterion,

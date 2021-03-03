@@ -53,6 +53,7 @@ class MaxPooledLocalizer(Module):
                  n_classes,
                  n_hidden_filters=None,
                  deep_final_conv=False,
+                 final_conv_bias=True,
                  merge_classes=False,
                  seg_shape=None):
         super().__init__()
@@ -64,10 +65,10 @@ class MaxPooledLocalizer(Module):
         if deep_final_conv:
             self.final_conv_block = Sequential(
                 ConvBlock(self.n_hidden_filters, self.n_hidden_filters, kernel_size=1),
-                Conv2d(self.n_hidden_filters, n_classes, kernel_size=1, bias=True)
+                Conv2d(self.n_hidden_filters, n_classes, kernel_size=1, bias=final_conv_bias)
             )
         else:
-            self.final_conv_block = Conv2d(self.n_hidden_filters, n_classes, kernel_size=(1, 1), bias=True)
+            self.final_conv_block = Conv2d(self.n_hidden_filters, n_classes, kernel_size=(1, 1), bias=final_conv_bias)
 
         self.max_pool = AdaptiveMaxPool2d((1, 1))
         self.flatten = Flatten()
