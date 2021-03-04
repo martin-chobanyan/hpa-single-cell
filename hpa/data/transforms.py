@@ -17,6 +17,10 @@ class AdjustableCropCompose(HPACompose):
         if self.crop_transform is None:
             raise ValueError('You must provide a RandomCrop transformation!')
 
+    def set_crop_size(self, shape):
+        self.crop_transform.height = shape[0]
+        self.crop_transform.width = shape[1]
+
 
 class ToBinaryCellSegmentation(A.ImageOnlyTransform):
     def __init__(self, dtype=np.float32):

@@ -120,6 +120,23 @@ class RGBYDataset(BaseDataset):
         return img, label_vec
 
 
+class CroppedRGBYDataset(RGBYDataset):
+    def __init__(self, train_idx, data_dir, transforms, external_data_dir=None):
+        """Initialization
+
+        Parameters
+        ----------
+        train_idx: pandas.DataFrame
+        data_dir: str
+        transforms: hpa.data.transforms.AdjustableCropCompose
+        external_data_dir: str
+        """
+        super().__init__(train_idx, data_dir, external_data_dir, transforms=transforms)
+
+    def set_crop_size(self, size):
+        self.transforms.set_crop_size((size, size))
+
+
 class RGBYWithSegmentation(BaseDataset):
     def __init__(self,
                  train_idx,
