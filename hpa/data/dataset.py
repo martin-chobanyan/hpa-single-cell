@@ -1,3 +1,4 @@
+from itertools import cycle
 import os
 
 from albumentations.pytorch import ToTensorV2
@@ -152,9 +153,25 @@ class SingleLabelBatchSampler:
         for _ in range(self.num_batches):
             label_id = self.sample_label_id()
             yield self.sample_idx_for_label(label_id)
-        
+
     def __len__(self):
         return self.num_batches
+
+
+# TODO: move this to loader.py module
+class AlternatingDataLoader:
+    """Cycle between different DataLoader instances for each epoch"""
+    def __init__(self, loaders):
+        """Initialization
+
+        Parameters
+        ----------
+        loaders: list[torch.utils.data.DataLoader]
+        """
+        self.loaders = cycle(loaders)
+
+    def __iter__(self):
+        return iter(next(self.loaders))
 
 
 class RGBYWithSegmentation(BaseDataset):
