@@ -14,6 +14,7 @@ N_CLASSES = 19
 NEGATIVE_LABEL = N_CLASSES - 1
 
 
+# TODO: move this to utils/misc
 def load_channels(img_id, img_dir):
     imgs = dict()
     for color in ('blue', 'green', 'red', 'yellow'):
@@ -27,6 +28,7 @@ def load_channels(img_id, img_dir):
     return imgs
 
 
+# TODO: move this to utils/misc
 def get_label_vector(labels):
     label_vec = np.zeros(N_CLASSES - 1, dtype=np.float32)
     labels = parse_string_label(labels)
@@ -34,6 +36,11 @@ def get_label_vector(labels):
         if i != 18:
             label_vec[i] = 1
     return label_vec
+
+
+# TODO: move this to utils/misc
+def get_single_label_subset(df):
+    return df.loc[~df['Label'].str.contains('\|')]
 
 
 class BaseDataset(Dataset):
@@ -118,6 +125,36 @@ class RGBYDataset(BaseDataset):
         elif isinstance(img, torch.Tensor):
             img = img.float()
         return img, label_vec
+
+
+# TODO: move this to loader.py module
+class SingleLabelBatchSampler:
+    def __init__(self, dataset, batch_size, num_batches):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.num_batches = num_batches
+
+        # self.unique_label_ids = list(str(i) for i in range(N_CLASSES))
+        self.unique_label_ids = list(str(i) for i in range(3))
+        self.single_label_idx = get_single_label_subset(self.dataset.data_idx)
+
+        # TODO: change this to be sampled before each batch
+        self.crop_size = (224, 224)
+
+    def sample_label_id(self):
+        return np.random.choice(self.unique_label_ids)
+
+    def sample_idx_for_label(self, label_id):
+        label_df = self.single_label_idx.loc[self.single_label_idx['Label'] == label_id]
+        return np.random.choice(label_df.index.values, self.batch_size, replace=False)
+
+    def __iter__(self):
+        for _ in range(self.num_batches):
+            label_id = self.sample_label_id()
+            yield self.sample_idx_for_label(label_id)
+        
+    def __len__(self):
+        return self.num_batches
 
 
 class RGBYWithSegmentation(BaseDataset):
