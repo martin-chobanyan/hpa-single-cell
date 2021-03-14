@@ -1,4 +1,3 @@
-from itertools import cycle
 import os
 
 from albumentations.pytorch import ToTensorV2
@@ -37,11 +36,6 @@ def get_label_vector(labels):
         if i != 18:
             label_vec[i] = 1
     return label_vec
-
-
-# TODO: move this to utils/misc
-def get_single_label_subset(df):
-    return df.loc[~df['Label'].str.contains('\|')]
 
 
 class BaseDataset(Dataset):
@@ -128,50 +122,20 @@ class RGBYDataset(BaseDataset):
         return img, label_vec
 
 
-# TODO: move this to loader.py module
-class SingleLabelBatchSampler:
-    def __init__(self, dataset, batch_size, num_batches):
-        self.dataset = dataset
-        self.batch_size = batch_size
-        self.num_batches = num_batches
-
-        # self.unique_label_ids = list(str(i) for i in range(N_CLASSES))
-        self.unique_label_ids = list(str(i) for i in range(3))
-        self.single_label_idx = get_single_label_subset(self.dataset.data_idx)
-
-        # TODO: change this to be sampled before each batch
-        self.crop_size = (224, 224)
-
-    def sample_label_id(self):
-        return np.random.choice(self.unique_label_ids)
-
-    def sample_idx_for_label(self, label_id):
-        label_df = self.single_label_idx.loc[self.single_label_idx['Label'] == label_id]
-        return np.random.choice(label_df.index.values, self.batch_size, replace=False)
-
-    def __iter__(self):
-        for _ in range(self.num_batches):
-            label_id = self.sample_label_id()
-            yield self.sample_idx_for_label(label_id)
-
-    def __len__(self):
-        return self.num_batches
-
-
-# TODO: move this to loader.py module
-class AlternatingDataLoader:
-    """Cycle between different DataLoader instances for each epoch"""
-    def __init__(self, loaders):
+class CroppedRGBYDataset(RGBYDataset):
+    def __init__(self, train_idx, data_dir, transforms, external_data_dir=None):
         """Initialization
-
         Parameters
         ----------
-        loaders: list[torch.utils.data.DataLoader]
+        train_idx: pandas.DataFrame
+        data_dir: str
+        transforms: hpa.data.transforms.AdjustableCropCompose
+        external_data_dir: str
         """
-        self.loaders = cycle(loaders)
+        super().__init__(train_idx, data_dir, external_data_dir, transforms=transforms)
 
-    def __iter__(self):
-        return iter(next(self.loaders))
+    def set_crop_size(self, size):
+        self.transforms.set_crop_size((size, size))
 
 
 class RGBYWithSegmentation(BaseDataset):
