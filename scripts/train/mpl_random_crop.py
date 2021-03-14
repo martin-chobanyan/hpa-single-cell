@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-7.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-8.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -36,9 +36,9 @@ if __name__ == '__main__':
 
     transform_fn = AdjustableCropCompose([
         A.Resize(img_dim, img_dim, p=1.0),
-        A.RandomCrop(min_crop_dim, min_crop_dim, p=1.0),
         A.Flip(p=0.5),
         A.ShiftScaleRotate(p=0.5),
+        A.RandomCrop(min_crop_dim, min_crop_dim, p=1.0),
         A.Normalize(
             mean=[0.074598, 0.050630, 0.050891, 0.076287],
             std=[0.122813, 0.085745, 0.129882, 0.119411],
@@ -49,8 +49,6 @@ if __name__ == '__main__':
 
     val_transform_fn = HPACompose([
         A.Resize(img_dim, img_dim, p=1.0),
-        A.Flip(p=0.5),
-        A.ShiftScaleRotate(p=0.5),
         A.Normalize(
             mean=[0.074598, 0.050630, 0.050891, 0.076287],
             std=[0.122813, 0.085745, 0.129882, 0.119411],
@@ -66,12 +64,11 @@ if __name__ == '__main__':
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'misc', 'public-hpa', 'data2')
 
-    # train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'full-train-index.csv'))
-    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
+    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'full-train-index.csv'))
+    # train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    # train_data = RGBYDataset(train_idx, DATA_DIR, external_data_dir=EXTERNAL_DATA_DIR, transforms=transform_fn)
-    train_data = CroppedRGBYDataset(train_idx, DATA_DIR, transforms=transform_fn)
+    train_data = CroppedRGBYDataset(train_idx, DATA_DIR, external_data_dir=EXTERNAL_DATA_DIR, transforms=transform_fn)
     val_data = RGBYDataset(val_idx, DATA_DIR, transforms=val_transform_fn)
 
     BATCH_SIZE = config['data']['batch_size']
