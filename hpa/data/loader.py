@@ -26,7 +26,7 @@ class AlternatingDataLoader:
 
 
 class SingleLabelBatchSampler:
-    def __init__(self, dataset, batch_size, num_batches, crop_range=(224, 768)):
+    def __init__(self, dataset, batch_size, num_batches, crop_range=(256, 768)):
         """Initialization
 
         Parameters
@@ -42,7 +42,7 @@ class SingleLabelBatchSampler:
         self.crop_range = crop_range
 
         self.unique_label_ids = list(str(i) for i in range(N_CLASSES))
-        # self.unique_label_ids = list(str(i) for i in range(3))
+        # self.unique_label_ids = [str(i) for i in [0, 5, 10, 8, 12]]
         self.single_label_idx = get_single_label_subset(self.dataset.data_idx)
 
     def sample_label_id(self):
@@ -50,7 +50,7 @@ class SingleLabelBatchSampler:
 
     def sample_idx_for_label(self, label_id):
         label_df = self.single_label_idx.loc[self.single_label_idx['Label'] == label_id]
-        return np.random.choice(label_df.index.values, self.batch_size, replace=False)
+        return np.random.choice(label_df.index.values, self.batch_size, replace=True)
 
     def sample_crop_size(self):
         return randint(*self.crop_range)
@@ -61,6 +61,7 @@ class SingleLabelBatchSampler:
 
     def __iter__(self):
         for _ in range(self.num_batches):
+            self.set_random_crop_size()
             label_id = self.sample_label_id()
             yield self.sample_idx_for_label(label_id)
 
