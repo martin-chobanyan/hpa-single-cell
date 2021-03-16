@@ -9,8 +9,9 @@ from torch.nn import ReLU, Sequential
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
-from hpa.data import RGBYDataset, N_CHANNELS, N_CLASSES
-from hpa.data.transforms import HPACompose
+from hpa.data import RGBYDataset, CroppedRGBYDataset, N_CHANNELS, N_CLASSES
+from hpa.data.loader import CropDataSampler
+from hpa.data.transforms import AdjustableCropCompose, HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
 from hpa.model.localizers import MaxPooledLocalizer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
@@ -23,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-6.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-8.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -31,10 +32,23 @@ if __name__ == '__main__':
     # Prepare the augmentations
     # -------------------------------------------------------------------------------------------
     img_dim = config['data']['image_size']
-    transform_fn = HPACompose([
-        A.Resize(img_dim, img_dim),
+    min_crop_dim = config['data']['crop_size']
+
+    transform_fn = AdjustableCropCompose([
+        A.Resize(img_dim, img_dim, p=1.0),
         A.Flip(p=0.5),
         A.ShiftScaleRotate(p=0.5),
+        A.RandomCrop(min_crop_dim, min_crop_dim, p=1.0),
+        A.Normalize(
+            mean=[0.074598, 0.050630, 0.050891, 0.076287],
+            std=[0.122813, 0.085745, 0.129882, 0.119411],
+            max_pixel_value=255
+        ),
+        ToTensorV2()
+    ])
+
+    val_transform_fn = HPACompose([
+        A.Resize(img_dim, img_dim, p=1.0),
         A.Normalize(
             mean=[0.074598, 0.050630, 0.050891, 0.076287],
             std=[0.122813, 0.085745, 0.129882, 0.119411],
@@ -51,13 +65,15 @@ if __name__ == '__main__':
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'misc', 'public-hpa', 'data2')
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'full-train-index.csv'))
+    # train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    train_data = RGBYDataset(train_idx, DATA_DIR, external_data_dir=EXTERNAL_DATA_DIR, transforms=transform_fn)
-    val_data = RGBYDataset(val_idx, DATA_DIR, transforms=transform_fn)
+    train_data = CroppedRGBYDataset(train_idx, DATA_DIR, external_data_dir=EXTERNAL_DATA_DIR, transforms=transform_fn)
+    val_data = RGBYDataset(val_idx, DATA_DIR, transforms=val_transform_fn)
 
     BATCH_SIZE = config['data']['batch_size']
-    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
+    train_sampler = CropDataSampler(train_data, batch_size=BATCH_SIZE, crop_range=(min_crop_dim, img_dim), shuffle=True)
+    train_loader = DataLoader(train_data, batch_sampler=train_sampler)
     val_loader = DataLoader(val_data, batch_size=BATCH_SIZE)
 
     # -------------------------------------------------------------------------------------------
@@ -106,10 +122,10 @@ if __name__ == '__main__':
     logger = Logger(LOGGER_PATH, header=['epoch', 'train_loss', 'val_loss', 'val_bce_loss', 'val_focal_loss'])
     for epoch in range(N_EPOCHS):
 
-        if epoch == 5:
-            optimizer = AdamW(model.parameters(), lr=0.0001)
-        if epoch == 15:
-            optimizer = AdamW(model.parameters(), lr=0.00001)
+        # if epoch == 5:
+        #     optimizer = AdamW(model.parameters(), lr=0.0001)
+        # if epoch == 15:
+        #     optimizer = AdamW(model.parameters(), lr=0.00001)
 
         train_loss = train_epoch(model,
                                  train_loader,

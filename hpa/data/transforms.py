@@ -7,6 +7,21 @@ class HPACompose(A.Compose):
         super().__init__(transforms, additional_targets={'extra': 'image'}, *args, **kwargs)
 
 
+class AdjustableCropCompose(HPACompose):
+    def __init__(self, transforms, *args, **kwargs):
+        super().__init__(transforms, *args, **kwargs)
+        self.crop_transform = None
+        for transform in transforms:
+            if isinstance(transform, A.RandomCrop):
+                self.crop_transform = transform
+        if self.crop_transform is None:
+            raise ValueError('You must provide a RandomCrop transformation!')
+
+    def set_crop_size(self, shape):
+        self.crop_transform.height = shape[0]
+        self.crop_transform.width = shape[1]
+
+
 class ToBinaryCellSegmentation(A.ImageOnlyTransform):
     def __init__(self, dtype=np.float32):
         super().__init__(p=1.0)
