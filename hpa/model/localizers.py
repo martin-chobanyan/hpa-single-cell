@@ -122,6 +122,7 @@ class PuzzleCAM(Module):
 
         self.max_pool = AdaptiveMaxPool2d((1, 1))
         self.flatten = Flatten()
+        self.use_tiles = True
 
     def base_branch(self, x):
         # calculate feature maps using full image
@@ -151,5 +152,8 @@ class PuzzleCAM(Module):
 
     def forward(self, x):
         full_class_maps, full_class_scores = self.base_branch(x)
-        tile_class_maps, tile_class_scores = self.tiled_branch(x)
-        return full_class_maps, full_class_scores, tile_class_maps, tile_class_scores
+        if self.use_tiles:
+            tile_class_maps, tile_class_scores = self.tiled_branch(x)
+            return full_class_maps, full_class_scores, tile_class_maps, tile_class_scores
+        else:
+            return full_class_scores

@@ -152,6 +152,79 @@ def test_epoch(model,
     return tuple(result)
 
 
+def train_puzzlecam_epoch(model,
+                          dataloader,
+                          criterion,
+                          reg_criterion,
+                          optimizer,
+                          device,
+                          reg_alpha=1.0,
+                          clip_grad_value=None,
+                          progress=False,
+                          epoch=None,
+                          n_batches=None):
+    """Train the model for an epoch
+
+    Parameters
+    ----------
+    model: nn.Module
+    dataloader: DataLoader
+    criterion: callable loss function
+    reg_criterion: callable loss function
+    optimizer: pytorch optimizer
+    device: str or torch.device
+    reg_alpha: float, optional
+    clip_grad_value: float, optional
+    progress: bool, optional
+    epoch: int, optional
+    n_batches: int, optional
+
+    Returns
+    -------
+    tuple[float]
+        The average losses
+    """
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
+    else:
+        generator = dataloader
+
+    avg_loss = []
+    avg_full_loss = []
+    avg_tile_loss = []
+    avg_reg_loss = []
+    model.train()
+    for batch_image, batch_label in generator:
+        # copy the data onto the device
+        batch_image = batch_image.to(device)
+        batch_label = batch_label.to(device)
+
+        # run the batch through the model
+        optimizer.zero_grad()
+        full_class_maps, full_class_scores, tile_class_maps, tile_class_scores = model(batch_image)
+
+        # calculate (1) full class loss, (2) tile class loss, (3) regularization term
+        loss_full = criterion(full_class_scores, batch_label)
+        loss_tile = criterion(tile_class_scores, batch_label)
+        loss_reg = reg_criterion(full_class_maps, tile_class_maps)
+
+        # combine the losses and backward propagate
+        loss = loss_full + loss_tile + reg_alpha * loss_reg
+        loss.backward()
+
+        # clip the gradient and then descend
+        if clip_grad_value is not None:
+            clip_grad_norm_(model.parameters(), clip_grad_value)
+        optimizer.step()
+
+        # store the losses
+        avg_loss.append(loss.item())
+        avg_full_loss.append(loss_full.item())
+        avg_tile_loss.append(loss_tile.item())
+        avg_reg_loss.append(loss_reg.item())
+    return mean(avg_loss), mean(avg_full_loss), mean(avg_tile_loss), mean(avg_reg_loss)
+
+
 def train_epoch_with_segmentation(model,
                                   dataloader,
                                   classify_criterion,
