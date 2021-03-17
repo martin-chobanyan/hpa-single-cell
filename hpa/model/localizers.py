@@ -1,5 +1,9 @@
+"""Neural networks for localization"""
+
 import torch
 from torch.nn import AdaptiveMaxPool2d, BatchNorm2d, Conv2d, Flatten, Module, ReLU, Sequential, Upsample
+
+from hpa.utils.model import merge_tiles, tile_image_batch
 
 
 def get_num_output_features(cnn):
@@ -89,3 +93,63 @@ class MaxPooledLocalizer(Module):
             segmentation = self.merge_nn(class_maps)
             return class_scores, segmentation
         return class_scores
+
+
+class PuzzleCAM(Module):
+    def __init__(self,
+                 base_cnn,
+                 n_classes,
+                 n_hidden_filters=None,
+                 deep_final_conv=False,
+                 final_conv_bias=True):
+
+        super().__init__()
+        self.base_cnn = base_cnn
+        self.n_hidden_filters = n_hidden_filters
+        if n_hidden_filters is None:
+            self.n_hidden_filters = get_num_output_features(base_cnn)
+
+        if deep_final_conv:
+            self.final_conv_block = Sequential(
+                ConvBlock(self.n_hidden_filters, self.n_hidden_filters, kernel_size=1),
+                Conv2d(self.n_hidden_filters, n_classes, kernel_size=1, bias=final_conv_bias)
+            )
+        else:
+            self.final_conv_block = Conv2d(self.n_hidden_filters,
+                                           n_classes,
+                                           kernel_size=(1, 1),
+                                           bias=final_conv_bias)
+
+        self.max_pool = AdaptiveMaxPool2d((1, 1))
+        self.flatten = Flatten()
+
+    def base_branch(self, x):
+        # calculate feature maps using full image
+        feature_maps = self.base_cnn(x)
+        class_maps = self.final_conv_block(feature_maps)
+
+        # calculate class scores using full image
+        class_scores = self.max_pool(class_maps)
+        class_scores = self.flatten(class_scores)
+        return class_maps, class_scores
+
+    def tiled_branch(self, x):
+        # tile the image batch
+        tiles = tile_image_batch(x)
+
+        # calculate the feature maps for each tile
+        feature_maps = self.base_cnn(tiles)
+        class_maps = self.final_conv_block(feature_maps)
+
+        # merge the tiled feature maps into a full image again
+        class_maps = merge_tiles(class_maps)
+
+        # calculate class scores using the merged features maps of the tiled images
+        class_scores = self.max_pool(class_maps)
+        class_scores = self.flatten(class_scores)
+        return class_maps, class_scores
+
+    def forward(self, x):
+        full_class_maps, full_class_scores = self.base_branch(x)
+        tile_class_maps, tile_class_scores = self.tiled_branch(x)
+        return full_class_maps, full_class_scores, tile_class_maps, tile_class_scores
