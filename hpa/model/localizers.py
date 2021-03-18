@@ -99,13 +99,16 @@ class PuzzleCAM(Module):
     def __init__(self,
                  base_cnn,
                  n_classes,
+                 tile_size=(2, 2),
                  n_hidden_filters=None,
                  deep_final_conv=False,
                  final_conv_bias=True):
 
         super().__init__()
         self.base_cnn = base_cnn
+        self.tile_size = tile_size
         self.n_hidden_filters = n_hidden_filters
+
         if n_hidden_filters is None:
             self.n_hidden_filters = get_num_output_features(base_cnn)
 
@@ -136,14 +139,14 @@ class PuzzleCAM(Module):
 
     def tiled_branch(self, x):
         # tile the image batch
-        tiles = tile_image_batch(x)
+        tiles = tile_image_batch(x, *self.tile_size)
 
         # calculate the feature maps for each tile
         feature_maps = self.base_cnn(tiles)
         class_maps = self.final_conv_block(feature_maps)
 
         # merge the tiled feature maps into a full image again
-        class_maps = merge_tiles(class_maps)
+        class_maps = merge_tiles(class_maps, *self.tile_size)
 
         # calculate class scores using the merged features maps of the tiled images
         class_scores = self.max_pool(class_maps)

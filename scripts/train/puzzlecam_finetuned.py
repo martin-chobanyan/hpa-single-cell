@@ -5,7 +5,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import pandas as pd
 import torch
-from torch.nn import L1Loss, MSELoss, ReLU, Sequential
+from torch.nn import MSELoss, ReLU, Sequential
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
@@ -82,6 +82,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     DEVICE = 'cuda'
     LR = config['model']['lr']
+    TILES_PER_DIM = config['model']['tiles_per_dim']
     ALPHA = config['model']['alpha']
     N_EPOCHS = config['model']['epochs']
     PRETRAINED_PATH = config['pretrained_path']
@@ -103,11 +104,14 @@ if __name__ == '__main__':
                                   ReLU())
 
     # define the localizer model
-    model = PuzzleCAM(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024)
+    model = PuzzleCAM(densenet_encoder,
+                      n_classes=N_CLASSES - 1,
+                      tile_size=(TILES_PER_DIM, TILES_PER_DIM),
+                      n_hidden_filters=1024)
+
     model = model.to(DEVICE)
 
     criterion = FocalSymmetricLovaszHardLogLoss()
-    # reg_criterion = L1Loss()
     reg_criterion = MSELoss()
     optimizer = AdamW(model.parameters(), lr=LR)
 
