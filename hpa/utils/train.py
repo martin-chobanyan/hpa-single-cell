@@ -7,7 +7,7 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
 from hpa.model.loss import FocalLoss
-from hpa.utils.metrics import Metrics
+from hpa.utils.metrics import exact_matchs, f1_scores, Metrics
 
 
 class Logger:
@@ -123,6 +123,7 @@ def test_epoch(model,
     if calc_focal:
         focal_fn = FocalLoss()
         metric_names.append('focal_loss')
+    metric_names += ['exact', 'f1']
     metrics = Metrics(metric_names)
 
     if progress:
@@ -137,12 +138,19 @@ def test_epoch(model,
             output = model(batch_image)
             loss = criterion(output, batch_label)
             metrics.insert('loss', loss.item())
+
             if calc_bce:
                 bce_loss = bce_fn(output, batch_label)
                 metrics.insert('bce_loss', bce_loss.item())
             if calc_focal:
                 focal_loss = focal_fn(output, batch_label)
                 metrics.insert('focal_loss', focal_loss.item())
+
+            exact_hits = exact_matchs(output, batch_label)
+            f1_values = f1_scores(output, batch_label)
+
+            metrics.bulk_insert('exact', exact_hits.tolist())
+            metrics.bulk_insert('f1', f1_values.tolist())
     return metrics.average()
 
 
@@ -315,6 +323,7 @@ def test_epoch_with_segmentation(model,
     if calc_focal:
         focal_fn = FocalLoss()
         metric_names.append('focal_loss')
+    metric_names += ['exact', 'f1']
     metrics = Metrics(metric_names)
 
     if progress:
@@ -344,6 +353,12 @@ def test_epoch_with_segmentation(model,
             if calc_focal:
                 focal_loss = focal_fn(class_scores, batch_label)
                 metrics.insert('focal_loss', focal_loss.item())
+
+            exact_hits = exact_matchs(class_scores, batch_label)
+            f1_values = f1_scores(class_scores, batch_label)
+
+            metrics.bulk_insert('exact', exact_hits.tolist())
+            metrics.bulk_insert('f1', f1_values.tolist())
     return metrics.average()
 
 

@@ -12,10 +12,17 @@ class Metrics:
         self.metric_dict = {name: [] for name in metric_names}
         self.metric_names = metric_names
 
-    def insert(self, metric_name, metric_val):
-        if metric_name not in self.metric_names:
-            raise ValueError(f'Unknown metric: "{metric_name}"')
-        self.metric_dict[metric_name].append(metric_val)
+    def check_name(self, name):
+        if name not in self.metric_names:
+            raise ValueError(f'Unknown metric: "{name}"')
+
+    def insert(self, name, val):
+        self.check_name(name)
+        self.metric_dict[name].append(val)
+
+    def bulk_insert(self, name, values):
+        self.check_name(name)
+        self.metric_dict[name] += values
 
     def average(self, metric_names=None):
         names = metric_names
