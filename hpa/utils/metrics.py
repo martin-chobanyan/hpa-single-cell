@@ -5,6 +5,23 @@ import torch
 DEFAULT_PROB_CUTOFF = 0.4
 
 
+class Metrics:
+    def __init__(self, metric_names):
+        self.metric_dict = {name: [] for name in metric_names}
+        self.metric_names = metric_names
+
+    def insert(self, metric_name, metric_val):
+        if metric_name not in self.metric_names:
+            raise ValueError(f'Unknown metric: "{metric_name}"')
+        self.metric_dict[metric_name].append(metric_val)
+
+    def average(self, metric_names=None):
+        names = metric_names
+        if names is None:
+            names = self.metric_names
+        return tuple(np.mean(self.metric_dict[name]) for name in names)
+
+
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 

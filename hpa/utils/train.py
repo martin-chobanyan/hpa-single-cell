@@ -82,7 +82,10 @@ def train_epoch(model,
         if clip_grad_value is not None:
             clip_grad_norm_(model.parameters(), clip_grad_value)
         optimizer.step()
+
+        # update metrics
         avg_loss.append(loss.item())
+
     return mean(avg_loss)
 
 
