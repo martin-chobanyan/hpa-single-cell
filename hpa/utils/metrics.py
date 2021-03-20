@@ -38,7 +38,7 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 
-def exact_matchs(logits, labels, prob_cutoff=DEFAULT_PROB_CUTOFF):
+def calc_exact_matchs(logits, labels, prob_cutoff=DEFAULT_PROB_CUTOFF):
     # cast to numpy if necessary
     if isinstance(logits, torch.Tensor):
         logits = logits.detach().cpu().numpy()
@@ -52,7 +52,7 @@ def exact_matchs(logits, labels, prob_cutoff=DEFAULT_PROB_CUTOFF):
     return (preds == labels).all(axis=1)
 
 
-def f1_scores(logits, labels, prob_cutoff=DEFAULT_PROB_CUTOFF, eps=1e-9):
+def calc_f1_scores(logits, labels, prob_cutoff=DEFAULT_PROB_CUTOFF, eps=1e-9):
     # cast to numpy if necessary
     if isinstance(logits, torch.Tensor):
         logits = logits.detach().cpu().numpy()

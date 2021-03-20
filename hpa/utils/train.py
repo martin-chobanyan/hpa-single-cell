@@ -7,7 +7,7 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
 from hpa.model.loss import FocalLoss
-from hpa.utils.metrics import exact_matchs, f1_scores, Metrics
+from hpa.utils.metrics import calc_exact_matchs, calc_f1_scores, Metrics
 
 
 class Logger:
@@ -146,8 +146,8 @@ def test_epoch(model,
                 focal_loss = focal_fn(output, batch_label)
                 metrics.insert('focal_loss', focal_loss.item())
 
-            exact_hits = exact_matchs(output, batch_label)
-            f1_values = f1_scores(output, batch_label)
+            exact_hits = calc_exact_matchs(output, batch_label)
+            f1_values = calc_f1_scores(output, batch_label)
 
             metrics.bulk_insert('exact', exact_hits.tolist())
             metrics.bulk_insert('f1', f1_values.tolist())
@@ -354,8 +354,8 @@ def test_epoch_with_segmentation(model,
                 focal_loss = focal_fn(class_scores, batch_label)
                 metrics.insert('focal_loss', focal_loss.item())
 
-            exact_hits = exact_matchs(class_scores, batch_label)
-            f1_values = f1_scores(class_scores, batch_label)
+            exact_hits = calc_exact_matchs(class_scores, batch_label)
+            f1_values = calc_f1_scores(class_scores, batch_label)
 
             metrics.bulk_insert('exact', exact_hits.tolist())
             metrics.bulk_insert('f1', f1_values.tolist())
