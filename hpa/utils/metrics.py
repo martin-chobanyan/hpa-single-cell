@@ -7,6 +7,8 @@ DEFAULT_PROB_CUTOFF = 0.4
 
 class Metrics:
     def __init__(self, metric_names):
+        if isinstance(metric_names, str):
+            metric_names = [metric_names]
         self.metric_dict = {name: [] for name in metric_names}
         self.metric_names = metric_names
 
@@ -19,7 +21,10 @@ class Metrics:
         names = metric_names
         if names is None:
             names = self.metric_names
-        return tuple(np.mean(self.metric_dict[name]) for name in names)
+        results = tuple(np.mean(self.metric_dict[name]) for name in names)
+        if len(results) == 1:
+            return results[0]
+        return results
 
 
 def sigmoid(x):

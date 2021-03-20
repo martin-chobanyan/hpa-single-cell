@@ -7,6 +7,7 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
 from hpa.model.loss import FocalLoss
+from hpa.utils.metrics import Metrics
 
 
 class Logger:
@@ -65,13 +66,14 @@ def train_epoch(model,
     float
         The average loss
     """
+    model.train()
+    metrics = Metrics('loss')
+
     if progress:
         generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
     else:
         generator = dataloader
 
-    avg_loss = []
-    model.train()
     for batch_image, batch_label in generator:
         batch_image = batch_image.to(device)
         batch_label = batch_label.to(device)
@@ -82,11 +84,8 @@ def train_epoch(model,
         if clip_grad_value is not None:
             clip_grad_norm_(model.parameters(), clip_grad_value)
         optimizer.step()
-
-        # update metrics
-        avg_loss.append(loss.item())
-
-    return mean(avg_loss)
+        metrics.insert('loss', loss.item())
+    return metrics.average()
 
 
 def test_epoch(model,
@@ -115,44 +114,36 @@ def test_epoch(model,
     float, float
         The average loss and the average accuracy
     """
+    model.eval()
+
+    metric_names = ['loss']
+    if calc_bce:
+        bce_fn = BCEWithLogitsLoss()
+        metric_names.append('bce_loss')
+    if calc_focal:
+        focal_fn = FocalLoss()
+        metric_names.append('focal_loss')
+    metrics = Metrics(metric_names)
+
     if progress:
         generator = tqdm(dataloader, desc=f'Epoch {epoch} (testing)', total=n_batches)
     else:
         generator = dataloader
 
-    if calc_bce:
-        bce_fn = BCEWithLogitsLoss()
-        avg_bce_loss = []
-    if calc_focal:
-        focal_fn = FocalLoss()
-        avg_focal_loss = []
-
-    avg_loss = []
-    model.eval()
     with torch.no_grad():
         for batch_image, batch_label in generator:
             batch_image = batch_image.to(device)
             batch_label = batch_label.to(device)
             output = model(batch_image)
             loss = criterion(output, batch_label)
-            avg_loss.append(loss.item())
-
+            metrics.insert('loss', loss.item())
             if calc_bce:
                 bce_loss = bce_fn(output, batch_label)
-                avg_bce_loss.append(bce_loss.item())
+                metrics.insert('bce_loss', bce_loss.item())
             if calc_focal:
                 focal_loss = focal_fn(output, batch_label)
-                avg_focal_loss.append(focal_loss.item())
-
-    # package the results and return
-    result = [mean(avg_loss)]
-    if calc_bce:
-        result.append(mean(avg_bce_loss))
-    if calc_focal:
-        result.append(mean(avg_focal_loss))
-    if len(result) == 1:
-        return result[0]
-    return tuple(result)
+                metrics.insert('focal_loss', focal_loss.item())
+    return metrics.average()
 
 
 def train_puzzlecam_epoch(model,
@@ -187,16 +178,14 @@ def train_puzzlecam_epoch(model,
     tuple[float]
         The average losses
     """
+    model.train()
+    metrics = Metrics(['loss', 'full_loss', 'tile_loss', 'reg_loss'])
+
     if progress:
         generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
     else:
         generator = dataloader
 
-    avg_loss = []
-    avg_full_loss = []
-    avg_tile_loss = []
-    avg_reg_loss = []
-    model.train()
     for batch_image, batch_label in generator:
         # copy the data onto the device
         batch_image = batch_image.to(device)
@@ -207,12 +196,12 @@ def train_puzzlecam_epoch(model,
         full_class_maps, full_class_scores, tile_class_maps, tile_class_scores = model(batch_image)
 
         # calculate (1) full class loss, (2) tile class loss, (3) regularization term
-        loss_full = criterion(full_class_scores, batch_label)
-        loss_tile = criterion(tile_class_scores, batch_label)
-        loss_reg = reg_criterion(full_class_maps, tile_class_maps)
+        full_loss = criterion(full_class_scores, batch_label)
+        tile_loss = criterion(tile_class_scores, batch_label)
+        reg_loss = reg_criterion(full_class_maps, tile_class_maps)
 
         # combine the losses and backward propagate
-        loss = loss_full + loss_tile + reg_alpha * loss_reg
+        loss = full_loss + tile_loss + reg_alpha * reg_loss
         loss.backward()
 
         # clip the gradient and then descend
@@ -221,11 +210,11 @@ def train_puzzlecam_epoch(model,
         optimizer.step()
 
         # store the losses
-        avg_loss.append(loss.item())
-        avg_full_loss.append(loss_full.item())
-        avg_tile_loss.append(loss_tile.item())
-        avg_reg_loss.append(loss_reg.item())
-    return mean(avg_loss), mean(avg_full_loss), mean(avg_tile_loss), mean(avg_reg_loss)
+        metrics.insert('loss', loss.item())
+        metrics.insert('full_loss', full_loss.item())
+        metrics.insert('tile_loss', tile_loss.item())
+        metrics.insert('reg_loss', reg_loss.item())
+    return metrics.average()
 
 
 def train_epoch_with_segmentation(model,
@@ -258,15 +247,14 @@ def train_epoch_with_segmentation(model,
     -------
     tuple
     """
+    model.train()
+    metrics = Metrics(['loss', 'classify_loss', 'segment_loss'])
+
     if progress:
         generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
     else:
         generator = dataloader
 
-    avg_loss = []
-    avg_classify_loss = []
-    avg_segment_loss = []
-    model.train()
     for batch_image, batch_seg, batch_label in generator:
         batch_image = batch_image.to(device)
         batch_seg = batch_seg.to(device)
@@ -284,10 +272,10 @@ def train_epoch_with_segmentation(model,
             clip_grad_norm_(model.parameters(), clip_grad_value)
         optimizer.step()
 
-        avg_loss.append(loss.item())
-        avg_classify_loss.append(classify_loss.item())
-        avg_segment_loss.append(segment_loss.item())
-    return mean(avg_loss), mean(avg_classify_loss), mean(avg_segment_loss)
+        metrics.insert('loss', loss.item())
+        metrics.insert('classify_loss', classify_loss.item())
+        metrics.insert('segment_loss', segment_loss.item())
+    return metrics.average()
 
 
 def test_epoch_with_segmentation(model,
@@ -318,22 +306,22 @@ def test_epoch_with_segmentation(model,
     -------
     tuple
     """
+    model.eval()
+
+    metric_names = ['loss', 'classify_loss', 'segment_loss']
+    if calc_bce:
+        bce_fn = BCEWithLogitsLoss()
+        metric_names.append('bce_loss')
+    if calc_focal:
+        focal_fn = FocalLoss()
+        metric_names.append('focal_loss')
+    metrics = Metrics(metric_names)
+
     if progress:
         generator = tqdm(dataloader, desc=f'Epoch {epoch} (testing)', total=n_batches)
     else:
         generator = dataloader
 
-    if calc_bce:
-        bce_fn = BCEWithLogitsLoss()
-        avg_bce_loss = []
-    if calc_focal:
-        focal_fn = FocalLoss()
-        avg_focal_loss = []
-
-    avg_loss = []
-    avg_classify_loss = []
-    avg_segment_loss = []
-    model.eval()
     with torch.no_grad():
         for batch_image, batch_seg, batch_label in generator:
             batch_image = batch_image.to(device)
@@ -346,24 +334,17 @@ def test_epoch_with_segmentation(model,
             segment_loss = segment_criterion(pred_seg, batch_seg)
             loss = w_classify * classify_loss + w_segment * segment_loss
 
-            avg_loss.append(loss.item())
-            avg_classify_loss.append(classify_loss.item())
-            avg_segment_loss.append(segment_loss.item())
+            metrics.insert('loss', loss.item())
+            metrics.insert('classify_loss', classify_loss.item())
+            metrics.insert('segment_loss', segment_loss.item())
 
             if calc_bce:
                 bce_loss = bce_fn(class_scores, batch_label)
-                avg_bce_loss.append(bce_loss.item())
+                metrics.insert('bce_loss', bce_loss.item())
             if calc_focal:
                 focal_loss = focal_fn(class_scores, batch_label)
-                avg_focal_loss.append(focal_loss.item())
-
-    # package the results and return
-    result = [mean(avg_loss), mean(avg_classify_loss), mean(avg_segment_loss)]
-    if calc_bce:
-        result.append(mean(avg_bce_loss))
-    if calc_focal:
-        result.append(mean(avg_focal_loss))
-    return tuple(result)
+                metrics.insert('focal_loss', focal_loss.item())
+    return metrics.average()
 
 
 def checkpoint(model, filepath):
