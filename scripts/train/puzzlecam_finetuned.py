@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/puzzlecam/puzzlecam-1.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/puzzlecam/puzzlecam-3.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -62,15 +62,15 @@ if __name__ == '__main__':
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'misc', 'public-hpa', 'data2')
     NUM_WORKERS = 4
 
-    # train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'full-train-index.csv'))
-    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
+    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'full-train-index.csv'))
+    # train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
     # train_idx = train_idx.head(32)
     # val_idx = val_idx.head(32)
 
-    # train_data = RGBYDataset(train_idx, DATA_DIR, external_data_dir=EXTERNAL_DATA_DIR, transforms=transform_fn)
-    train_data = RGBYDataset(train_idx, DATA_DIR, transforms=transform_fn)
+    train_data = RGBYDataset(train_idx, DATA_DIR, external_data_dir=EXTERNAL_DATA_DIR, transforms=transform_fn)
+    # train_data = RGBYDataset(train_idx, DATA_DIR, transforms=transform_fn)
     val_data = RGBYDataset(val_idx, DATA_DIR, transforms=val_transform_fn)
 
     BATCH_SIZE = config['data']['batch_size']
