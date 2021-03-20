@@ -1,12 +1,17 @@
 import csv
 from statistics import mean
 
+import numpy as np
 import torch
 from torch.nn import BCEWithLogitsLoss
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
 from hpa.model.loss import FocalLoss
+
+
+# default value to use for selecting classes from probability outputs
+DEFAULT_PROB_CUTOFF = 0.4
 
 
 class Logger:
@@ -35,6 +40,40 @@ class Logger:
         with open(self.filepath, 'a') as file:
             writer = csv.writer(file)
             writer.writerow(args)
+
+
+def exact_matchs(probs, labels, prob_cutoff=DEFAULT_PROB_CUTOFF):
+    # cast to numpy if necessary
+    if isinstance(probs, torch.Tensor):
+        probs = probs.detach().cpu().numpy()
+    if isinstance(labels, torch.Tensor):
+        labels = labels.detach().cpu().numpy()
+
+    # threshold probabilities to one-hot predictions
+    preds = np.zeros(probs.shape)
+    preds[probs > prob_cutoff] = 1.0
+    return (preds == labels).all(axis=1)
+
+
+def f1_scores(probs, labels, prob_cutoff=DEFAULT_PROB_CUTOFF, eps=1e-9):
+    # cast to numpy if necessary
+    if isinstance(probs, torch.Tensor):
+        probs = probs.detach().cpu().numpy()
+    if isinstance(labels, torch.Tensor):
+        labels = labels.detach().cpu().numpy()
+
+    # threshold probabilities to one-hot predictions
+    preds = np.zeros(probs.shape)
+    preds[probs > prob_cutoff] = 1.0
+
+    true_pos = ((preds == labels) & (preds != 0) & (labels != 0)).sum(axis=1)
+    total_preds = preds.sum(axis=1)
+    total_labels = labels.sum(axis=1)
+
+    precs = true_pos / total_preds
+    recall = true_pos / total_labels
+    f1_score = 2 * (precs * recall) / (precs + recall + eps)
+    return f1_score
 
 
 def train_epoch(model,
