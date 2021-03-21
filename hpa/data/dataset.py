@@ -164,7 +164,6 @@ class RGBYWithSegmentation(BaseDataset):
 
     def __getitem__(self, item):
         img_id, channels, label_vec = super().__getitem__(item)
-        print(img_id)
 
         # stack the channels as RGBY
         img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])

@@ -4,17 +4,17 @@ from yaml import safe_load
 import albumentations as A
 import pandas as pd
 import torch
-from torch.nn import BCELoss, ReLU, Sequential
+from torch.nn import ReLU, Sequential
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
-from hpa.data import RGBYWithSegmentation, N_CHANNELS, N_CLASSES
+from hpa.data import CHANNEL_MEANS, CHANNEL_STDS, RGBYWithSegmentation, N_CHANNELS, N_CLASSES
 from hpa.data.transforms import HPACompose, ToBinaryCellSegmentation
 from hpa.model.bestfitting.densenet import DensenetClass
 from hpa.model.localizers import MaxPooledLocalizer
-from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
+from hpa.model.loss import ClassHeatmapLoss, FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
-from hpa.utils.train import checkpoint, Logger, train_epoch_with_segmentation, test_epoch_with_segmentation
+from hpa.utils.train import checkpoint, Logger, train_epoch_with_seg, test_epoch_with_seg
 
 if __name__ == '__main__':
     print('Training a weakly-supervised max-pooled localizer with pretrained encoder')
@@ -22,30 +22,33 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-0.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-3.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
     # -------------------------------------------------------------------------------------------
     # Prepare the augmentations
     # -------------------------------------------------------------------------------------------
-    img_dim = config['data']['image_size']
+    IMG_DIM = config['data']['image_size']
+    MIN_BLUR = config['data']['min_blur']
+    MAX_BLUR = config['data']['max_blur']
+    HEATMAP_SCALE = config['data']['heatmap_scale']
+    HEATMAP_DIM = int(IMG_DIM / HEATMAP_SCALE)
 
     dual_train_transform_fn = HPACompose([
-        A.Resize(img_dim, img_dim),
-        A.Flip(p=0.5),
-        A.ShiftScaleRotate(p=0.5),
+        A.Flip(p=0.5)
     ])
 
-    dual_val_transform_fn = A.Resize(img_dim, img_dim)
+    img_transform_fn = HPACompose([
+        A.Resize(IMG_DIM, IMG_DIM),
+        A.Normalize(mean=CHANNEL_MEANS, std=CHANNEL_STDS, max_pixel_value=255)
+    ])
 
-    img_transform_fn = A.Normalize(
-        mean=[0.074598, 0.050630, 0.050891, 0.076287],
-        std=[0.122813, 0.085745, 0.129882, 0.119411],
-        max_pixel_value=255
-    )
-
-    seg_transform_fn = ToBinaryCellSegmentation()
+    seg_transform_fn = HPACompose([
+        ToBinaryCellSegmentation(),
+        A.Blur(blur_limit=(MIN_BLUR, MAX_BLUR), p=1.0),
+        A.Resize(HEATMAP_DIM, HEATMAP_DIM)
+    ])
 
     # -------------------------------------------------------------------------------------------
     # Prepare the data
@@ -53,29 +56,32 @@ if __name__ == '__main__':
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     SEG_DIR = config['data']['seg_dir']
+    NUM_WORKERS = 4
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    train_data = RGBYWithSegmentation(train_idx,
-                                      DATA_DIR,
-                                      SEG_DIR,
-                                      dual_train_transform_fn,
-                                      img_transform_fn,
-                                      seg_transform_fn,
+    train_idx = train_idx.head(64)
+    val_idx = val_idx.head(64)
+
+    train_data = RGBYWithSegmentation(data_idx=train_idx,
+                                      data_dir=DATA_DIR,
+                                      seg_dir=SEG_DIR,
+                                      dual_transforms=dual_train_transform_fn,
+                                      img_transforms=img_transform_fn,
+                                      seg_transforms=seg_transform_fn,
                                       tensorize=True)
 
-    val_data = RGBYWithSegmentation(val_idx,
-                                    DATA_DIR,
-                                    SEG_DIR,
-                                    dual_val_transform_fn,
-                                    img_transform_fn,
-                                    seg_transform_fn,
+    val_data = RGBYWithSegmentation(data_idx=val_idx,
+                                    data_dir=DATA_DIR,
+                                    seg_dir=SEG_DIR,
+                                    img_transforms=img_transform_fn,
+                                    seg_transforms=seg_transform_fn,
                                     tensorize=True)
 
     BATCH_SIZE = config['data']['batch_size']
-    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=BATCH_SIZE)
+    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+    val_loader = DataLoader(val_data, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS)
 
     # -------------------------------------------------------------------------------------------
     # Prepare the model
@@ -99,15 +105,11 @@ if __name__ == '__main__':
                                   ReLU())
 
     # define the localizer model
-    model = MaxPooledLocalizer(densenet_encoder,
-                               n_classes=N_CLASSES - 1,
-                               n_hidden_filters=1024,
-                               merge_classes=True,
-                               seg_shape=(img_dim, img_dim))
+    model = MaxPooledLocalizer(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024, return_maps=True)
     model = model.to(DEVICE)
 
     classify_criterion = FocalSymmetricLovaszHardLogLoss()
-    segment_criterion = BCELoss()
+    segment_criterion = ClassHeatmapLoss()
     optimizer = AdamW(model.parameters(), lr=LR)
 
     # -------------------------------------------------------------------------------------------
@@ -124,7 +126,7 @@ if __name__ == '__main__':
     W_CLASSIFY = config['model']['classify_weight']
     W_SEGMENT = config['model']['segment_weight']
 
-    header = [
+    HEADER = [
         'epoch',
         'train_loss',
         'train_classify_loss',
@@ -133,37 +135,39 @@ if __name__ == '__main__':
         'val_classify_loss',
         'val_segment_loss',
         'val_bce_loss',
-        'val_focal_loss'
+        'val_focal_loss',
+        'val_exact',
+        'val_f1'
     ]
-    logger = Logger(LOGGER_PATH, header=header)
+    logger = Logger(LOGGER_PATH, header=HEADER)
 
     best_loss = float('inf')
     for epoch in range(N_EPOCHS):
-        train_results = train_epoch_with_segmentation(model,
-                                                      train_loader,
-                                                      classify_criterion,
-                                                      segment_criterion,
-                                                      optimizer,
-                                                      DEVICE,
-                                                      W_CLASSIFY,
-                                                      W_SEGMENT,
-                                                      clip_grad_value=1,
-                                                      progress=True,
-                                                      epoch=epoch,
-                                                      n_batches=N_TRAIN_BATCHES)
+        train_results = train_epoch_with_seg(model,
+                                             train_loader,
+                                             classify_criterion,
+                                             segment_criterion,
+                                             optimizer,
+                                             DEVICE,
+                                             W_CLASSIFY,
+                                             W_SEGMENT,
+                                             clip_grad_value=1,
+                                             progress=True,
+                                             epoch=epoch,
+                                             n_batches=N_TRAIN_BATCHES)
 
-        val_results = test_epoch_with_segmentation(model,
-                                                   val_loader,
-                                                   classify_criterion,
-                                                   segment_criterion,
-                                                   DEVICE,
-                                                   W_CLASSIFY,
-                                                   W_SEGMENT,
-                                                   calc_bce=True,
-                                                   calc_focal=True,
-                                                   progress=True,
-                                                   epoch=epoch,
-                                                   n_batches=N_VAL_BATCHES)
+        val_results = test_epoch_with_seg(model,
+                                          val_loader,
+                                          classify_criterion,
+                                          segment_criterion,
+                                          DEVICE,
+                                          W_CLASSIFY,
+                                          W_SEGMENT,
+                                          calc_bce=True,
+                                          calc_focal=True,
+                                          progress=True,
+                                          epoch=epoch,
+                                          n_batches=N_VAL_BATCHES)
 
         logger.add_entry(epoch, *train_results, *val_results)
 

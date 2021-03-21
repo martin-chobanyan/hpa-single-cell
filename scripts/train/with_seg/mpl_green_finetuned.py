@@ -14,7 +14,7 @@ from hpa.model.bestfitting.densenet import DensenetClass
 from hpa.model.localizers import MaxPooledLocalizer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
-from hpa.utils.train import checkpoint, Logger, train_epoch_with_segmentation, test_epoch_with_segmentation
+from hpa.utils.train import checkpoint, Logger, train_epoch_with_seg, test_epoch_with_seg
 
 if __name__ == '__main__':
     print('Training a weakly-supervised max-pooled localizer with pretrained encoder')
@@ -134,31 +134,31 @@ if __name__ == '__main__':
 
     best_loss = float('inf')
     for epoch in range(N_EPOCHS):
-        train_results = train_epoch_with_segmentation(model,
-                                                      train_loader,
-                                                      classify_criterion,
-                                                      segment_criterion,
-                                                      optimizer,
-                                                      DEVICE,
-                                                      W_CLASSIFY,
-                                                      W_SEGMENT,
-                                                      clip_grad_value=1,
-                                                      progress=True,
-                                                      epoch=epoch,
-                                                      n_batches=N_TRAIN_BATCHES)
+        train_results = train_epoch_with_seg(model,
+                                             train_loader,
+                                             classify_criterion,
+                                             segment_criterion,
+                                             optimizer,
+                                             DEVICE,
+                                             W_CLASSIFY,
+                                             W_SEGMENT,
+                                             clip_grad_value=1,
+                                             progress=True,
+                                             epoch=epoch,
+                                             n_batches=N_TRAIN_BATCHES)
 
-        val_results = test_epoch_with_segmentation(model,
-                                                   val_loader,
-                                                   classify_criterion,
-                                                   segment_criterion,
-                                                   DEVICE,
-                                                   W_CLASSIFY,
-                                                   W_SEGMENT,
-                                                   calc_bce=True,
-                                                   calc_focal=True,
-                                                   progress=True,
-                                                   epoch=epoch,
-                                                   n_batches=N_VAL_BATCHES)
+        val_results = test_epoch_with_seg(model,
+                                          val_loader,
+                                          classify_criterion,
+                                          segment_criterion,
+                                          DEVICE,
+                                          W_CLASSIFY,
+                                          W_SEGMENT,
+                                          calc_bce=True,
+                                          calc_focal=True,
+                                          progress=True,
+                                          epoch=epoch,
+                                          n_batches=N_VAL_BATCHES)
 
         logger.add_entry(epoch, *train_results, *val_results)
 

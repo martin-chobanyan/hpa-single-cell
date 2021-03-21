@@ -225,23 +225,23 @@ def train_puzzlecam_epoch(model,
     return metrics.average()
 
 
-def train_epoch_with_segmentation(model,
-                                  dataloader,
-                                  classify_criterion,
-                                  segment_criterion,
-                                  optimizer,
-                                  device,
-                                  w_classify=0.5,
-                                  w_segment=0.5,
-                                  clip_grad_value=None,
-                                  progress=False,
-                                  epoch=None,
-                                  n_batches=None):
+def train_epoch_with_seg(model,
+                         dataloader,
+                         classify_criterion,
+                         segment_criterion,
+                         optimizer,
+                         device,
+                         w_classify=0.5,
+                         w_segment=0.5,
+                         clip_grad_value=None,
+                         progress=False,
+                         epoch=None,
+                         n_batches=None):
     """Train the model for an epoch
 
     Parameters
     ----------
-    model: nn.Module
+    model: hpa.model.localizers.MaxPooledLocalizer
     dataloader: DataLoader
     classify_criterion: callable loss function
     optimizer: pytorch optimizer
@@ -269,10 +269,10 @@ def train_epoch_with_segmentation(model,
         batch_label = batch_label.to(device)
 
         optimizer.zero_grad()
-        class_scores, pred_seg = model(batch_image)
+        class_maps, class_scores = model(batch_image)
 
         classify_loss = classify_criterion(class_scores, batch_label)
-        segment_loss = segment_criterion(pred_seg, batch_seg)
+        segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
         loss = w_classify * classify_loss + w_segment * segment_loss
 
         loss.backward()
@@ -286,23 +286,23 @@ def train_epoch_with_segmentation(model,
     return metrics.average()
 
 
-def test_epoch_with_segmentation(model,
-                                 dataloader,
-                                 classify_criterion,
-                                 segment_criterion,
-                                 device,
-                                 w_classify=0.5,
-                                 w_segment=0.5,
-                                 calc_bce=False,
-                                 calc_focal=False,
-                                 progress=False,
-                                 epoch=None,
-                                 n_batches=None):
+def test_epoch_with_seg(model,
+                        dataloader,
+                        classify_criterion,
+                        segment_criterion,
+                        device,
+                        w_classify=0.5,
+                        w_segment=0.5,
+                        calc_bce=False,
+                        calc_focal=False,
+                        progress=False,
+                        epoch=None,
+                        n_batches=None):
     """Run the model for a test epoch
 
     Parameters
     ----------
-    model: nn.Module
+    model: hpa.model.localizers.MaxPooledLocalizer
     dataloader: DataLoader
     criterion: callable loss function
     device: str or torch.device
@@ -337,10 +337,10 @@ def test_epoch_with_segmentation(model,
             batch_seg = batch_seg.to(device)
             batch_label = batch_label.to(device)
 
-            class_scores, pred_seg = model(batch_image)
+            class_maps, class_scores = model(batch_image)
 
             classify_loss = classify_criterion(class_scores, batch_label)
-            segment_loss = segment_criterion(pred_seg, batch_seg)
+            segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
             loss = w_classify * classify_loss + w_segment * segment_loss
 
             metrics.insert('loss', loss.item())
