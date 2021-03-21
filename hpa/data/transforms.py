@@ -23,6 +23,7 @@ class AdjustableCropCompose(HPACompose):
 
 
 class ToBinaryCellSegmentation(A.ImageOnlyTransform):
+    """Transform a cell segmentation array (with values 0, 1, ..., num_cells) to a binary cell segmentation array"""
     def __init__(self, dtype=np.float32):
         super().__init__(p=1.0)
         self.dtype = dtype
