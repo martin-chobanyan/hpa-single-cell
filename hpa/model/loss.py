@@ -7,9 +7,11 @@ from .bestfitting.layers_loss import FocalSymmetricLovaszHardLogLoss, FocalLoss
 
 
 class ClassHeatmapLoss(Module):
-    def __init__(self):
+    def __init__(self, heatmap_loss_fn=None):
         super().__init__()
-        self.mse_loss = MSELoss()
+        self.heatmap_loss_fn = heatmap_loss_fn
+        if self.heatmap_loss_fn is None:
+            self.heatmap_loss_fn = MSELoss()
 
     def forward(self, class_heatmaps, target_heatmap, label_vectors):
         """Forward Propagation
@@ -34,9 +36,12 @@ class ClassHeatmapLoss(Module):
         class_heatmaps = torch.sigmoid(class_heatmaps)
         for batch_idx, label_vec in enumerate(label_vectors):
             label_idx = torch.where(label_vec)[0]
-            tgt_maps = class_heatmaps[batch_idx, label_idx]
+            if len(label_idx) > 0:
+                tgt_maps = class_heatmaps[batch_idx, label_idx]
+            else:
+                tgt_maps = class_heatmaps[batch_idx, :]
             heatmap = tgt_maps.max(dim=0).values
             pred_heatmap.append(heatmap)
         pred_heatmap = torch.stack(pred_heatmap)
         pred_heatmap = pred_heatmap.unsqueeze(1)
-        return self.mse_loss(pred_heatmap, target_heatmap)
+        return self.heatmap_loss_fn(pred_heatmap, target_heatmap)

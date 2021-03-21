@@ -4,7 +4,7 @@ from yaml import safe_load
 import albumentations as A
 import pandas as pd
 import torch
-from torch.nn import ReLU, Sequential
+from torch.nn import L1Loss, ReLU, Sequential
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
@@ -61,8 +61,8 @@ if __name__ == '__main__':
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    train_idx = train_idx.head(64)
-    val_idx = val_idx.head(64)
+    # train_idx = train_idx.head(64)
+    # val_idx = val_idx.head(64)
 
     train_data = RGBYWithSegmentation(data_idx=train_idx,
                                       data_dir=DATA_DIR,
@@ -109,7 +109,7 @@ if __name__ == '__main__':
     model = model.to(DEVICE)
 
     classify_criterion = FocalSymmetricLovaszHardLogLoss()
-    segment_criterion = ClassHeatmapLoss()
+    segment_criterion = ClassHeatmapLoss(heatmap_loss_fn=L1Loss())
     optimizer = AdamW(model.parameters(), lr=LR)
 
     # -------------------------------------------------------------------------------------------

@@ -176,6 +176,10 @@ class RGBYWithSegmentation(BaseDataset):
         # load the segmentation map
         seg = np.load(os.path.join(seg_dir, f'{img_id}.npz'))['arr_0']
 
+        # if the label is 18 ("other"), zero out the segmentation map
+        if label_vec.sum() == 0:
+            seg = np.zeros(seg.shape)
+
         if self.dual_transforms is not None:
             aug_result = self.dual_transforms(image=img, mask=seg)
             img = aug_result['image']
