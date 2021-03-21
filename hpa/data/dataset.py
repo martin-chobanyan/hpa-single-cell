@@ -39,19 +39,19 @@ def get_label_vector(labels):
 
 
 class BaseDataset(Dataset):
-    def __init__(self, train_idx, data_dir, external_data_dir=None):
+    def __init__(self, data_idx, data_dir, external_data_dir=None):
         """Initialization
 
         Parameters
         ----------
-        train_idx: pandas.DataFrame
+        data_idx: pandas.DataFrame
         data_dir: str
         """
         super().__init__()
-        self.data_idx = train_idx
+        self.data_idx = data_idx
         self.data_dir = data_dir
         self.external_data_dir = external_data_dir
-        self.n_samples = len(train_idx)
+        self.n_samples = len(data_idx)
 
     def get_img_id_and_label(self, item):
         return self.data_idx.loc[item, ['ID', 'Label']]
@@ -83,16 +83,16 @@ class BaseDataset(Dataset):
 
 
 class RGBYDataset(BaseDataset):
-    def __init__(self, train_idx, data_dir, external_data_dir=None, transforms=None):
+    def __init__(self, data_idx, data_dir, external_data_dir=None, transforms=None):
         """Initialization
 
         Parameters
         ----------
-        train_idx: pandas.DataFrame
+        data_idx: pandas.DataFrame
         data_dir: str
         transforms: hpa.data.transforms.HPACompose
         """
-        super().__init__(train_idx, data_dir, external_data_dir)
+        super().__init__(data_idx, data_dir, external_data_dir)
         self.transforms = transforms
 
     def __getitem__(self, item):
@@ -123,16 +123,16 @@ class RGBYDataset(BaseDataset):
 
 
 class CroppedRGBYDataset(RGBYDataset):
-    def __init__(self, train_idx, data_dir, transforms, external_data_dir=None):
+    def __init__(self, data_idx, data_dir, transforms, external_data_dir=None):
         """Initialization
         Parameters
         ----------
-        train_idx: pandas.DataFrame
+        data_idx: pandas.DataFrame
         data_dir: str
         transforms: hpa.data.transforms.AdjustableCropCompose
         external_data_dir: str
         """
-        super().__init__(train_idx, data_dir, external_data_dir, transforms=transforms)
+        super().__init__(data_idx, data_dir, external_data_dir, transforms=transforms)
 
     def set_crop_size(self, size):
         self.transforms.set_crop_size((size, size))
@@ -140,16 +140,18 @@ class CroppedRGBYDataset(RGBYDataset):
 
 class RGBYWithSegmentation(BaseDataset):
     def __init__(self,
-                 train_idx,
+                 data_idx,
                  data_dir,
                  seg_dir,
                  external_data_dir=None,
+                 external_seg_dir=None,
                  dual_transforms=None,
                  img_transforms=None,
                  seg_transforms=None,
                  tensorize=True):
-        super().__init__(train_idx, data_dir, external_data_dir)
+        super().__init__(data_idx, data_dir, external_data_dir)
         self.seg_dir = seg_dir
+        self.external_seg_dir = external_seg_dir
 
         self.dual_transforms = dual_transforms
         self.img_transforms = img_transforms
@@ -162,12 +164,18 @@ class RGBYWithSegmentation(BaseDataset):
 
     def __getitem__(self, item):
         img_id, channels, label_vec = super().__getitem__(item)
+        print(img_id)
 
         # stack the channels as RGBY
         img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
 
+        if (self.external_seg_dir is not None) and (self.data_idx.at[item, 'Source'] == 'external'):
+            seg_dir = self.external_seg_dir
+        else:
+            seg_dir = self.seg_dir
+
         # load the segmentation map
-        seg = np.load(os.path.join(self.seg_dir, f'{img_id}.npz'))['arr_0']
+        seg = np.load(os.path.join(seg_dir, f'{img_id}.npz'))['arr_0']
 
         if self.dual_transforms is not None:
             aug_result = self.dual_transforms(image=img, mask=seg)
@@ -191,19 +199,18 @@ class RGBYWithSegmentation(BaseDataset):
         if self.tensorize is not None:
             img = self.tensorize(image=img)['image']
             seg = self.tensorize(image=seg)['image']
-
         return img, seg, label_vec
 
 
 class RGBYWithGreenTarget(BaseDataset):
     def __init__(self,
-                 train_idx,
+                 data_idx,
                  data_dir,
                  external_data_dir=None,
                  dual_transforms=None,
                  img_transforms=None,
                  tensorize=True):
-        super().__init__(train_idx, data_dir, external_data_dir)
+        super().__init__(data_idx, data_dir, external_data_dir)
         self.dual_transforms = dual_transforms
         self.img_transforms = img_transforms
         if tensorize:
@@ -248,16 +255,16 @@ class RGBYWithGreenTarget(BaseDataset):
 
 
 class IsolatedTargetDataset(BaseDataset):
-    def __init__(self, train_idx, data_dir, external_data_dir=None, transforms=None):
+    def __init__(self, data_idx, data_dir, external_data_dir=None, transforms=None):
         """Initialization
 
         Parameters
         ----------
-        train_idx: pandas.DataFrame
+        data_idx: pandas.DataFrame
         data_dir: str
         transforms: hpa.data.transforms.HPACompose
         """
-        super().__init__(train_idx, data_dir, external_data_dir)
+        super().__init__(data_idx, data_dir, external_data_dir)
         self.transforms = transforms
 
     def __getitem__(self, item):
