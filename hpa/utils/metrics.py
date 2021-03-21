@@ -68,7 +68,7 @@ def calc_f1_scores(logits, labels, prob_cutoff=DEFAULT_PROB_CUTOFF, eps=1e-9):
     total_preds = preds.sum(axis=1)
     total_labels = labels.sum(axis=1)
 
-    precs = true_pos / total_preds
-    recall = true_pos / total_labels
+    precs = true_pos / (total_preds + eps)
+    recall = true_pos / (total_labels + eps)
     f1_score = 2 * (precs * recall) / (precs + recall + eps)
     return f1_score
