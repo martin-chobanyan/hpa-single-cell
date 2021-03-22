@@ -1,3 +1,4 @@
+from cv2 import resize
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
@@ -13,6 +14,41 @@ def plot_predicted_probs(probs, tgt_class_idx, figsize=(15, 5)):
     ax.set_title('Class Predictions')
     plt.legend()
     return ax
+
+
+def overlay_heatmaps(cell_img, heatmaps, pred_segs):
+    """Overlay the predicted heatmaps and segmentation maps over the input image
+
+    Parameters
+    ----------
+    cell_img: PIL.Image
+    heatmaps: dict[int, numpy.ndarray]
+    pred_segs: dict[int, numpy.ndarray]
+    """
+    img_dim = cell_img.size[0]
+    for label_id, pred in pred_segs.items():
+        heatmap = resize(heatmaps[label_id], (img_dim, img_dim))
+        pred = pred_segs[label_id]
+
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+
+        colors = 'gray'
+        ax1.imshow(cell_img)
+        ax1.imshow(heatmap, cmap=colors, vmin=0, vmax=1, alpha=0.75)
+        ax1.set_title(f'Label: {label_id} with heatmap')
+        ax1.axis('off')
+
+        colors = 'seismic'
+        ax2.imshow(heatmap, cmap=colors, vmin=0, vmax=1)
+        ax2.set_title('Heatmap')
+        ax2.axis('off')
+
+        colors = 'inferno'
+        ax3.imshow(cell_img.resize(pred.shape))
+        ax3.imshow(pred, cmap=colors, alpha=0.5)
+        ax3.set_title(f'Label: {label_id} with filtered heatmap')
+        ax3.axis('off')
+        plt.show()
 
 
 def plot_sample(imgs, figsize=(10, 10)):
