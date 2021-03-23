@@ -22,7 +22,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-3.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-4.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     SEG_DIR = config['data']['seg_dir']
-    NUM_WORKERS = 4
+    NUM_WORKERS = 12
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
