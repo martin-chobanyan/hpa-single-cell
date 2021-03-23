@@ -4,6 +4,22 @@ import numpy as np
 from PIL import Image
 
 
+def plot_example(cell_img, green_img, seg, figsize=(18, 6)):
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize)
+    ax1.imshow(cell_img)
+    ax1.set_title('Reference Image')
+    ax1.axis('off')
+
+    ax2.imshow(green_img)
+    ax2.set_title('Target Proteins')
+    ax2.axis('off')
+
+    ax3.imshow(seg)
+    ax3.set_title('Cell Segmentation')
+    ax3.axis('off')
+    plt.show()
+
+
 def plot_predicted_probs(probs, tgt_class_idx, figsize=(15, 5)):
     fig, ax = plt.subplots(figsize=figsize)
     bar_idx = np.arange(len(probs))
