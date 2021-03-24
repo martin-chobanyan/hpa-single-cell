@@ -22,7 +22,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/finetuned-seg-5.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/max-pooled-sigmoid/with-seg/finetuned-seg-6.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -105,12 +105,21 @@ if __name__ == '__main__':
                                   ReLU())
 
     # define the localizer model
-    model = MaxPooledLocalizer(densenet_encoder, n_classes=N_CLASSES - 1, n_hidden_filters=1024, return_maps=True)
+    model = MaxPooledLocalizer(base_cnn=densenet_encoder,
+                               n_classes=N_CLASSES - 1,
+                               n_hidden_filters=1024,
+                               # deep_final_conv=True,
+                               return_maps=True)
+
+    # freeze the base CNN
+    for param in model.base_cnn.parameters():
+        param.requires_grad = False
+
     model = model.to(DEVICE)
 
     classify_criterion = FocalSymmetricLovaszHardLogLoss()
     segment_criterion = ClassHeatmapLoss(heatmap_loss_fn=L1Loss())
-    optimizer = AdamW(model.parameters(), lr=LR)
+    optimizer = AdamW(model.final_conv_block.parameters(), lr=LR)
 
     # -------------------------------------------------------------------------------------------
     # Train the model
