@@ -66,12 +66,13 @@ class MaxPooledLocalizer(Module):
 
 
 class DecomposedDensenet(Module):
-    def __init__(self, densenet_model):
+    def __init__(self, densenet_model, map_classes=True):
         """Initialization
 
         Parameters
         ----------
         densenet_model: hpa.model.bestfitting.densenet.DensenetClass
+        map_classes: bool, optional
         """
         super().__init__()
 
@@ -106,6 +107,11 @@ class DecomposedDensenet(Module):
 
         # transform the `logit` fully-connected layer into a 1x1 Conv2d
         self.fc2 = self.__prepare_fc2(densenet_model)
+
+        self.final_conv = None
+        if map_classes:
+            # create a final randomly initialized conv layer for the new label set
+            self.final_conv = Conv2d(self.num_classes, 18, kernel_size=1)
 
     def __prepare_bn1_avg(self, densenet_model):
         bn_avg = BatchNorm2d(num_features=self.num_features)
@@ -185,6 +191,9 @@ class DecomposedDensenet(Module):
         # linearly map the features to the class map (using the old 28 labels)
         class_maps = self.fc2(act_bn2)
 
+        # linearly map the classes to the newer class labels if requested
+        if self.final_conv is not None:
+            class_maps = self.final_conv(class_maps)
         return class_maps
 
 
