@@ -84,7 +84,7 @@ if __name__ == '__main__':
         densenet_model.load_state_dict(pretrained_state_dict)
 
     # decompose the model
-    decomposed_model = DecomposedDensenet(densenet_model=densenet_model, map_classes=True)
+    decomposed_model = DecomposedDensenet(densenet_model=densenet_model, map_classes=True, max_classes=False)
 
     # define the localizer model
     model = PooledLocalizer(cnn=decomposed_model, pool='avg', return_maps=False)

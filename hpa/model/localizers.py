@@ -2,7 +2,7 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
-                      Flatten, Module, ReLU, Sequential, Dropout2d, Linear, Parameter)
+                      Flatten, Module, ReLU, Sequential, Linear, Parameter)
 
 from hpa.utils.model import get_num_output_features, merge_tiles, tile_image_batch
 
@@ -66,7 +66,7 @@ class MaxPooledLocalizer(Module):
 
 
 class DecomposedDensenet(Module):
-    def __init__(self, densenet_model, map_classes=True):
+    def __init__(self, densenet_model, map_classes=False, max_classes=False):
         """Initialization
 
         Parameters
@@ -108,9 +108,13 @@ class DecomposedDensenet(Module):
         # transform the `logit` fully-connected layer into a 1x1 Conv2d
         self.fc2 = self.__prepare_fc2(densenet_model)
 
+        if max_classes and map_classes:
+            raise ValueError('Cannot have both max_classes and map_classes be True!')
+        self.max_classes = max_classes
+        self.map_classes = map_classes
+
         self.final_conv = None
         if map_classes:
-            # create a final randomly initialized conv layer for the new label set
             self.final_conv = Conv2d(self.num_classes, 18, kernel_size=1)
 
     def __prepare_bn1_avg(self, densenet_model):
@@ -158,6 +162,19 @@ class DecomposedDensenet(Module):
         fc2_conv.bias.data = densenet_model.logit.bias.data
         return fc2_conv
 
+    @staticmethod
+    def map_old_classes_to_new(class_maps):
+        channel_groups = [
+            class_maps[:, :8, ...],
+            class_maps[:, [11], ...],
+            class_maps[:, [12, 13], ...].max(dim=1, keepdim=True).values,
+            class_maps[:, [14, 17, 19], ...],
+            class_maps[:, [21, 22], ...].max(dim=1, keepdim=True).values,
+            class_maps[:, [23, 24, 25], ...],
+            class_maps[:, [8, 9, 10, 20, 26], ...].max(dim=1, keepdim=True).values
+        ]
+        return torch.cat(channel_groups, dim=1)
+
     def forward(self, x):
         batch_size, *_ = x.shape
         feature_maps = self.densenet_encoder(x)
@@ -171,8 +188,8 @@ class DecomposedDensenet(Module):
         act_max = self.bn1_max(max_features)
 
         # apply dropout on both branches
-        act_avg = F.dropout2d(act_avg, p=0.5, training=self.training)
-        act_max = F.dropout(act_max, p=0.5, training=self.training)
+        # act_avg = F.dropout2d(act_avg, p=0.5, training=self.training)
+        # act_max = F.dropout(act_max, p=0.5, training=self.training)
 
         # pass each branch through their respective 1x1 Conv2d or Linear layers
         act_fc_avg = self.fc1_avg(act_avg)
@@ -186,14 +203,19 @@ class DecomposedDensenet(Module):
 
         # apply second round of batch normalization and dropout
         act_bn2 = self.bn2(act_fc)
-        act_bn2 = F.dropout2d(act_bn2, p=0.5, training=self.training)
+        # act_bn2 = F.dropout2d(act_bn2, p=0.5, training=self.training)
 
         # linearly map the features to the class map (using the old 28 labels)
         class_maps = self.fc2(act_bn2)
 
         # linearly map the classes to the newer class labels if requested
-        if self.final_conv is not None:
+        if self.map_classes:
             class_maps = self.final_conv(class_maps)
+
+        # condense the class maps to the new label set
+        if self.max_classes:
+            class_maps = self.map_old_classes_to_new(class_maps)
+
         return class_maps
 
 
