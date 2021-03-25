@@ -111,7 +111,7 @@ def test_epoch(model,
 
     Returns
     -------
-    float, float
+    tuple[float]
         The average loss and the average accuracy
     """
     model.eval()
