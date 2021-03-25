@@ -1,6 +1,6 @@
 """Neural networks for localization"""
 
-from torch.nn import AdaptiveMaxPool2d, BatchNorm2d, Conv2d, Flatten, Module, ReLU, Sequential
+from torch.nn import AdaptiveAvgPool2d, AdaptiveMaxPool2d, BatchNorm2d, Conv2d, Flatten, Module, ReLU, Sequential
 
 from hpa.utils.model import merge_tiles, tile_image_batch
 
@@ -71,6 +71,32 @@ class MaxPooledLocalizer(Module):
         if self.return_maps:
             return class_maps, class_scores
         return class_scores
+
+
+class PooledLocalizer(Module):
+    """A more general version of the `MaxPooledLocalizer`"""
+
+    def __init__(self, cnn, pool='max', return_maps=True):
+        super().__init__()
+        self.cnn = cnn
+        self.pool_type = pool
+        self.return_maps = return_maps
+
+        if self.pool_type == 'max':
+            self.pool_fn = AdaptiveMaxPool2d((1, 1))
+        elif self.pool_type == 'avg':
+            self.pool_fn = AdaptiveAvgPool2d((1, 1))
+        else:
+            raise ValueError(f'No supported pool type: "{self.pool_type}"')
+        self.flatten = Flatten()
+
+    def forward(self, x):
+        class_maps = self.cnn(x)
+        class_logits = self.pool_fn(class_maps)
+        class_logits = self.flatten(class_logits)
+        if self.return_maps:
+            return class_maps, class_logits
+        return class_logits
 
 
 class PuzzleCAM(Module):
