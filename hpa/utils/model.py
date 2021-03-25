@@ -1,4 +1,16 @@
 import torch
+from torch.nn import Conv2d
+
+
+def get_num_output_features(cnn):
+    final_conv = None
+    for m in cnn.modules():
+        if isinstance(m, Conv2d):
+            final_conv = m
+    if final_conv is None:
+        raise ValueError('The input model has no Conv2d layers!')
+    return final_conv.out_channels
+
 
 
 def tile_image_batch(x, n_vertical=2, n_horizontal=2):

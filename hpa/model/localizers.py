@@ -2,17 +2,7 @@
 
 from torch.nn import AdaptiveAvgPool2d, AdaptiveMaxPool2d, BatchNorm2d, Conv2d, Flatten, Module, ReLU, Sequential
 
-from hpa.utils.model import merge_tiles, tile_image_batch
-
-
-def get_num_output_features(cnn):
-    final_conv = None
-    for m in cnn.modules():
-        if isinstance(m, Conv2d):
-            final_conv = m
-    if final_conv is None:
-        raise ValueError('The input model has no Conv2d layers!')
-    return final_conv.out_channels
+from hpa.utils.model import get_num_output_features, merge_tiles, tile_image_batch
 
 
 class ConvBlock(Module):
