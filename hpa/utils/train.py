@@ -241,7 +241,7 @@ def train_epoch_with_seg(model,
 
     Parameters
     ----------
-    model: hpa.model.localizers.MaxPooledLocalizer
+    model: torch.nn.Module
     dataloader: DataLoader
     classify_criterion: callable loss function
     optimizer: pytorch optimizer
@@ -302,7 +302,7 @@ def test_epoch_with_seg(model,
 
     Parameters
     ----------
-    model: hpa.model.localizers.MaxPooledLocalizer
+    model: torch.nn.Module
     dataloader: DataLoader
     criterion: callable loss function
     device: str or torch.device
