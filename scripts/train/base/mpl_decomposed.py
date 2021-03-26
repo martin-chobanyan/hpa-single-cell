@@ -22,7 +22,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/base/decomposed0.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/base/decomposed2.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -84,10 +84,10 @@ if __name__ == '__main__':
         densenet_model.load_state_dict(pretrained_state_dict)
 
     # decompose the model
-    decomposed_model = DecomposedDensenet(densenet_model=densenet_model, map_classes=True, max_classes=False)
+    decomposed_model = DecomposedDensenet(densenet_model=densenet_model, max_classes=True)
 
     # define the localizer model
-    model = PooledLocalizer(cnn=decomposed_model, pool='avg', return_maps=False)
+    model = PooledLocalizer(cnn=decomposed_model, pool='max', return_maps=False)
     model = model.to(DEVICE)
 
     criterion = FocalSymmetricLovaszHardLogLoss()
