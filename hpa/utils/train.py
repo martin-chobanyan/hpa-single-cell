@@ -418,7 +418,7 @@ def test_puzzlecam_epoch(model,
     metrics = Metrics(metric_names)
 
     if progress:
-        generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (testing)', total=n_batches)
     else:
         generator = dataloader
 

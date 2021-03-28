@@ -122,7 +122,8 @@ if __name__ == '__main__':
     N_TRAIN_BATCHES = int(len(train_data) / BATCH_SIZE)
     N_VAL_BATCHES = int(len(val_data) / BATCH_SIZE)
 
-    REG_ALPHA = config['model']['alpha']
+    # reg_alpha = config['model']['alpha']
+    reg_alpha = 0.0
 
     HEADER = [
         'epoch',
@@ -145,6 +146,20 @@ if __name__ == '__main__':
 
     best_loss = float('inf')
     for epoch in range(N_EPOCHS):
+
+        if epoch == 5:
+            reg_alpha = 0.25
+            print(f'Changing reconstruction alpha: {reg_alpha}')
+        if epoch == 10:
+            reg_alpha = 0.50
+            print(f'Changing reconstruction alpha: {reg_alpha}')
+        if epoch == 15:
+            reg_alpha = 0.75
+            print(f'Changing reconstruction alpha: {reg_alpha}')
+        if epoch == 20:
+            reg_alpha = 1.00
+            print(f'Changing reconstruction alpha: {reg_alpha}')
+
         train_results = train_puzzlecam_epoch(model=model,
                                               dataloader=train_loader,
                                               criterion=criterion,
@@ -152,7 +167,7 @@ if __name__ == '__main__':
                                               seg_criterion=seg_criterion,
                                               optimizer=optimizer,
                                               device=DEVICE,
-                                              reg_alpha=REG_ALPHA,
+                                              reg_alpha=reg_alpha,
                                               progress=True,
                                               epoch=epoch,
                                               n_batches=N_TRAIN_BATCHES)
@@ -163,7 +178,7 @@ if __name__ == '__main__':
                                            reg_criterion=reg_criterion,
                                            seg_criterion=seg_criterion,
                                            device=DEVICE,
-                                           reg_alpha=REG_ALPHA,
+                                           reg_alpha=reg_alpha,
                                            calc_bce=True,
                                            calc_focal=True,
                                            progress=True,
