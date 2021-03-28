@@ -245,45 +245,15 @@ class PooledLocalizer(Module):
         return class_logits
 
 
-class PuzzleCAM(Module):
-    def __init__(self,
-                 base_cnn,
-                 n_classes,
-                 tile_size=(2, 2),
-                 n_hidden_filters=None,
-                 deep_final_conv=False,
-                 final_conv_bias=True):
-
-        super().__init__()
-        self.base_cnn = base_cnn
+class PuzzleCAM(PooledLocalizer):
+    def __init__(self, cnn, pool='max', return_maps=True, tile_size=(2, 2)):
+        super().__init__(cnn, pool, return_maps)
         self.tile_size = tile_size
-        self.n_hidden_filters = n_hidden_filters
-
-        if n_hidden_filters is None:
-            self.n_hidden_filters = get_num_output_features(base_cnn)
-
-        if deep_final_conv:
-            self.final_conv_block = Sequential(
-                ConvBlock(self.n_hidden_filters, self.n_hidden_filters, kernel_size=1),
-                Conv2d(self.n_hidden_filters, n_classes, kernel_size=1, bias=final_conv_bias)
-            )
-        else:
-            self.final_conv_block = Conv2d(self.n_hidden_filters,
-                                           n_classes,
-                                           kernel_size=(1, 1),
-                                           bias=final_conv_bias)
-
-        self.max_pool = AdaptiveMaxPool2d((1, 1))
-        self.flatten = Flatten()
         self.use_tiles = True
 
     def base_branch(self, x):
-        # calculate feature maps using full image
-        feature_maps = self.base_cnn(x)
-        class_maps = self.final_conv_block(feature_maps)
-
-        # calculate class scores using full image
-        class_scores = self.max_pool(class_maps)
+        class_maps = self.cnn(x)
+        class_scores = self.pool_fn(class_maps)
         class_scores = self.flatten(class_scores)
         return class_maps, class_scores
 
@@ -292,14 +262,13 @@ class PuzzleCAM(Module):
         tiles = tile_image_batch(x, *self.tile_size)
 
         # calculate the feature maps for each tile
-        feature_maps = self.base_cnn(tiles)
-        class_maps = self.final_conv_block(feature_maps)
+        class_maps = self.cnn(tiles)
 
         # merge the tiled feature maps into a full image again
         class_maps = merge_tiles(class_maps, *self.tile_size)
 
         # calculate class scores using the merged features maps of the tiled images
-        class_scores = self.max_pool(class_maps)
+        class_scores = self.pool_fn(class_maps)
         class_scores = self.flatten(class_scores)
         return class_maps, class_scores
 
@@ -308,5 +277,7 @@ class PuzzleCAM(Module):
         if self.use_tiles:
             tile_class_maps, tile_class_scores = self.tiled_branch(x)
             return full_class_maps, full_class_scores, tile_class_maps, tile_class_scores
+        elif self.return_maps:
+            return full_class_maps, full_class_scores
         else:
             return full_class_scores

@@ -1,7 +1,7 @@
 """Module containing useful loss functions"""
 
 import torch
-from torch.nn import Module, MSELoss
+from torch.nn import L1Loss, Module
 
 from .bestfitting.layers_loss import FocalSymmetricLovaszHardLogLoss, FocalLoss
 
@@ -11,7 +11,7 @@ class ClassHeatmapLoss(Module):
         super().__init__()
         self.heatmap_loss_fn = heatmap_loss_fn
         if self.heatmap_loss_fn is None:
-            self.heatmap_loss_fn = MSELoss()
+            self.heatmap_loss_fn = L1Loss()
 
     def forward(self, class_heatmaps, target_heatmap, label_vectors):
         """Forward Propagation
@@ -45,3 +45,19 @@ class ClassHeatmapLoss(Module):
         pred_heatmap = torch.stack(pred_heatmap)
         pred_heatmap = pred_heatmap.unsqueeze(1)
         return self.heatmap_loss_fn(pred_heatmap, target_heatmap)
+
+
+class PuzzleRegLoss(Module):
+    def __init__(self, logits=False, criterion=None):
+        super().__init__()
+        self.logits = logits
+        self.criterion = criterion
+
+        if self.criterion is None:
+            self.criterion = L1Loss()
+
+    def forward(self, full_cam, tiled_cam):
+        if self.logits:
+            full_cam = torch.sigmoid(full_cam)
+            tiled_cam = torch.sigmoid(tiled_cam)
+        return self.criterion(full_cam, tiled_cam)

@@ -154,77 +154,6 @@ def test_epoch(model,
     return metrics.average()
 
 
-def train_puzzlecam_epoch(model,
-                          dataloader,
-                          criterion,
-                          reg_criterion,
-                          optimizer,
-                          device,
-                          reg_alpha=1.0,
-                          clip_grad_value=None,
-                          progress=False,
-                          epoch=None,
-                          n_batches=None):
-    """Train the model for an epoch
-
-    Parameters
-    ----------
-    model: nn.Module
-    dataloader: DataLoader
-    criterion: callable loss function
-    reg_criterion: callable loss function
-    optimizer: pytorch optimizer
-    device: str or torch.device
-    reg_alpha: float, optional
-    clip_grad_value: float, optional
-    progress: bool, optional
-    epoch: int, optional
-    n_batches: int, optional
-
-    Returns
-    -------
-    tuple[float]
-        The average losses
-    """
-    model.train()
-    metrics = Metrics(['loss', 'full_loss', 'tile_loss', 'reg_loss'])
-
-    if progress:
-        generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
-    else:
-        generator = dataloader
-
-    for batch_image, batch_label in generator:
-        # copy the data onto the device
-        batch_image = batch_image.to(device)
-        batch_label = batch_label.to(device)
-
-        # run the batch through the model
-        optimizer.zero_grad()
-        full_class_maps, full_class_scores, tile_class_maps, tile_class_scores = model(batch_image)
-
-        # calculate (1) full class loss, (2) tile class loss, (3) regularization term
-        full_loss = criterion(full_class_scores, batch_label)
-        tile_loss = criterion(tile_class_scores, batch_label)
-        reg_loss = reg_criterion(full_class_maps, tile_class_maps)
-
-        # combine the losses and backward propagate
-        loss = full_loss + tile_loss + reg_alpha * reg_loss
-        loss.backward()
-
-        # clip the gradient and then descend
-        if clip_grad_value is not None:
-            clip_grad_norm_(model.parameters(), clip_grad_value)
-        optimizer.step()
-
-        # store the losses
-        metrics.insert('loss', loss.item())
-        metrics.insert('full_loss', full_loss.item())
-        metrics.insert('tile_loss', tile_loss.item())
-        metrics.insert('reg_loss', reg_loss.item())
-    return metrics.average()
-
-
 def train_epoch_with_seg(model,
                          dataloader,
                          classify_criterion,
@@ -356,6 +285,180 @@ def test_epoch_with_seg(model,
 
             exact_hits = calc_exact_matchs(class_scores, batch_label)
             f1_values = calc_f1_scores(class_scores, batch_label)
+
+            metrics.bulk_insert('exact', exact_hits.tolist())
+            metrics.bulk_insert('f1', f1_values.tolist())
+    return metrics.average()
+
+
+def train_puzzlecam_epoch(model,
+                          dataloader,
+                          criterion,
+                          reg_criterion,
+                          seg_criterion,
+                          optimizer,
+                          device,
+                          reg_alpha=1.0,
+                          clip_grad_value=None,
+                          progress=False,
+                          epoch=None,
+                          n_batches=None):
+    """Train the model for an epoch
+
+    Parameters
+    ----------
+    model: hpa.model.localizers.PuzzleCAM
+    dataloader: DataLoader
+    criterion: callable loss function
+    reg_criterion: callable loss function
+    seg_criterion: torch.nn.Module
+    optimizer: pytorch optimizer
+    device: str or torch.device
+    reg_alpha: float, optional
+    clip_grad_value: float, optional
+    progress: bool, optional
+    epoch: int, optional
+    n_batches: int, optional
+
+    Returns
+    -------
+    tuple[float]
+        The average losses
+    """
+    model.train()
+    model.use_tiles = True
+
+    metric_names = ['loss', 'full_loss', 'tile_loss', 'reg_loss', 'seg_loss']
+    metrics = Metrics(metric_names)
+
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
+    else:
+        generator = dataloader
+
+    for batch_image, batch_seg, batch_label in generator:
+        # copy the data onto the device
+        batch_image = batch_image.to(device)
+        batch_seg = batch_seg.to(device)
+        batch_label = batch_label.to(device)
+
+        # run the batch through the model
+        optimizer.zero_grad()
+        full_class_maps, full_class_scores, tile_class_maps, tile_class_scores = model(batch_image)
+
+        # calculate (1) full class loss, (2) tile class loss, (3) regularization term
+        full_loss = criterion(full_class_scores, batch_label)
+        tile_loss = criterion(tile_class_scores, batch_label)
+        reg_loss = reg_criterion(full_class_maps, tile_class_maps)
+
+        # combine the losses and backward propagate
+        loss = full_loss + tile_loss + reg_alpha * reg_loss
+        loss.backward()
+
+        # clip the gradient and then descend
+        if clip_grad_value is not None:
+            clip_grad_norm_(model.parameters(), clip_grad_value)
+        optimizer.step()
+
+        # calculate the segmentation loss (only for metrics, no backpropagation)
+        seg_loss = seg_criterion(full_class_maps, batch_seg, batch_label)
+
+        # store the losses
+        metrics.insert('loss', loss.item())
+        metrics.insert('full_loss', full_loss.item())
+        metrics.insert('tile_loss', tile_loss.item())
+        metrics.insert('reg_loss', reg_loss.item())
+        metrics.insert('seg_loss', seg_loss.item())
+    return metrics.average()
+
+
+def test_puzzlecam_epoch(model,
+                         dataloader,
+                         criterion,
+                         reg_criterion,
+                         seg_criterion,
+                         device,
+                         reg_alpha=1.0,
+                         calc_bce=False,
+                         calc_focal=False,
+                         progress=False,
+                         epoch=None,
+                         n_batches=None):
+    """Train the model for an epoch
+
+    Parameters
+    ----------
+    model: hpa.model.localizers.PuzzleCAM
+    dataloader: DataLoader
+    criterion: callable loss function
+    reg_criterion: callable loss function
+    seg_criterion: torch.nn.Module
+    device: str or torch.device
+    reg_alpha: float, optional
+    progress: bool, optional
+    epoch: int, optional
+    n_batches: int, optional
+
+    Returns
+    -------
+    tuple[float]
+        The average losses
+    """
+    model.eval()
+    model.use_tiles = True
+
+    metric_names = ['loss', 'full_loss', 'tile_loss', 'reg_loss', 'seg_loss']
+    if calc_bce:
+        bce_fn = BCEWithLogitsLoss()
+        metric_names.append('bce_loss')
+    if calc_focal:
+        focal_fn = FocalLoss()
+        metric_names.append('focal_loss')
+    metric_names += ['exact', 'f1']
+    metrics = Metrics(metric_names)
+
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
+    else:
+        generator = dataloader
+
+    with torch.no_grad():
+        for batch_image, batch_seg, batch_label in generator:
+            # copy the data onto the device
+            batch_image = batch_image.to(device)
+            batch_seg = batch_seg.to(device)
+            batch_label = batch_label.to(device)
+
+            # run the batch through the model
+            full_class_maps, full_class_scores, tile_class_maps, tile_class_scores = model(batch_image)
+
+            # calculate (1) full class loss, (2) tile class loss, (3) regularization term
+            full_loss = criterion(full_class_scores, batch_label)
+            tile_loss = criterion(tile_class_scores, batch_label)
+            reg_loss = reg_criterion(full_class_maps, tile_class_maps)
+
+            # combine the losses and backward propagate
+            loss = full_loss + tile_loss + reg_alpha * reg_loss
+
+            # calculate the segmentation loss
+            seg_loss = seg_criterion(full_class_maps, batch_seg, batch_label)
+
+            # store the losses
+            metrics.insert('loss', loss.item())
+            metrics.insert('full_loss', full_loss.item())
+            metrics.insert('tile_loss', tile_loss.item())
+            metrics.insert('reg_loss', reg_loss.item())
+            metrics.insert('seg_loss', seg_loss.item())
+
+            if calc_bce:
+                bce_loss = bce_fn(full_class_scores, batch_label)
+                metrics.insert('bce_loss', bce_loss.item())
+            if calc_focal:
+                focal_loss = focal_fn(full_class_scores, batch_label)
+                metrics.insert('focal_loss', focal_loss.item())
+
+            exact_hits = calc_exact_matchs(full_class_scores, batch_label)
+            f1_values = calc_f1_scores(full_class_scores, batch_label)
 
             metrics.bulk_insert('exact', exact_hits.tolist())
             metrics.bulk_insert('f1', f1_values.tolist())
