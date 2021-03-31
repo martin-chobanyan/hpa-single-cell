@@ -4,6 +4,7 @@ from yaml import safe_load
 import albumentations as A
 import pandas as pd
 import torch
+from torch.nn import MSELoss
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
@@ -15,13 +16,30 @@ from hpa.model.loss import ClassHeatmapLoss, FocalSymmetricLovaszHardLogLoss, Pu
 from hpa.utils import create_folder
 from hpa.utils.train import checkpoint, Logger, train_puzzlecam_epoch, test_puzzlecam_epoch
 
+
+class AlphaScheduler:
+    def __init__(self, max_value=1.0, increment=0.1, delay_start=5):
+        self.alpha = 0.0
+        self.epoch = 0
+        self.max_value = max_value
+        self.increment = increment
+        self.delay_start = delay_start
+
+    def update(self):
+        if self.epoch >= self.delay_start:
+            self.alpha = min(self.alpha + self.increment, self.max_value)
+            print(f'Changing reconstruction hyperparameter: {self.alpha}')
+        self.epoch += 1
+        return min(self.alpha, 1.0)
+
+
 if __name__ == '__main__':
     print('Training a weakly-supervised max-pooled localizer with pretrained encoder')
 
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/puzzle/decomposed-puzzle0.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/puzzle/decomposed-puzzle2.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -107,7 +125,7 @@ if __name__ == '__main__':
     model = model.to(DEVICE)
 
     criterion = FocalSymmetricLovaszHardLogLoss()
-    reg_criterion = PuzzleRegLoss(logits=False)
+    reg_criterion = PuzzleRegLoss(logits=False, criterion=MSELoss())
     seg_criterion = ClassHeatmapLoss()
     optimizer = AdamW(model.parameters(), lr=LR)
 
@@ -123,7 +141,8 @@ if __name__ == '__main__':
     N_VAL_BATCHES = int(len(val_data) / BATCH_SIZE)
 
     # reg_alpha = config['model']['alpha']
-    reg_alpha = 0.0
+    scheduler = AlphaScheduler(delay_start=0)
+    scheduler.epoch = -1
 
     HEADER = [
         'epoch',
@@ -146,19 +165,7 @@ if __name__ == '__main__':
 
     best_loss = float('inf')
     for epoch in range(N_EPOCHS):
-
-        if epoch == 5:
-            reg_alpha = 0.25
-            print(f'Changing reconstruction alpha: {reg_alpha}')
-        if epoch == 10:
-            reg_alpha = 0.50
-            print(f'Changing reconstruction alpha: {reg_alpha}')
-        if epoch == 15:
-            reg_alpha = 0.75
-            print(f'Changing reconstruction alpha: {reg_alpha}')
-        if epoch == 20:
-            reg_alpha = 1.00
-            print(f'Changing reconstruction alpha: {reg_alpha}')
+        reg_alpha = scheduler.update()
 
         train_results = train_puzzlecam_epoch(model=model,
                                               dataloader=train_loader,

@@ -12,7 +12,6 @@ def get_num_output_features(cnn):
     return final_conv.out_channels
 
 
-
 def tile_image_batch(x, n_vertical=2, n_horizontal=2):
     """PUZZLE-CAM utility function
 
