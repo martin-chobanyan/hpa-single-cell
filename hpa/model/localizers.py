@@ -1,8 +1,9 @@
 """Neural networks for localization"""
 
-from torch.nn import AdaptiveMaxPool2d, BatchNorm2d, Conv2d, Flatten, Module, ReLU, Sequential
+from torch.nn import AdaptiveMaxPool2d, Conv2d, Flatten, Module, Sequential
 
-from hpa.utils.model import merge_tiles, tile_image_batch
+from .layers import ConvBlock
+from ..utils.model import merge_tiles, tile_image_batch
 
 
 def get_num_output_features(cnn):
@@ -13,28 +14,6 @@ def get_num_output_features(cnn):
     if final_conv is None:
         raise ValueError('The input model has no Conv2d layers!')
     return final_conv.out_channels
-
-
-class ConvBlock(Module):
-    def __init__(self, in_channels, out_channels, kernel_size, bnorm=True, relu=True, bias=True):
-        super().__init__()
-        self.conv = Conv2d(in_channels, out_channels, kernel_size, bias=bias)
-
-        self.bnorm = None
-        if bnorm:
-            self.bnorm = BatchNorm2d(out_channels)
-
-        self.relu = None
-        if relu:
-            self.relu = ReLU()
-
-    def forward(self, x):
-        x = self.conv(x)
-        if self.bnorm is not None:
-            x = self.bnorm(x)
-        if self.relu is not None:
-            x = self.relu(x)
-        return x
 
 
 class MaxPooledLocalizer(Module):
