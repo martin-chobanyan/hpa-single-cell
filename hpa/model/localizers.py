@@ -4,29 +4,8 @@ import torch.nn.functional as F
 from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
                       Flatten, Module, ReLU, Sequential, Linear, Parameter)
 
-from hpa.utils.model import get_num_output_features, merge_tiles, tile_image_batch
-
-
-class ConvBlock(Module):
-    def __init__(self, in_channels, out_channels, kernel_size, bnorm=True, relu=True, bias=True):
-        super().__init__()
-        self.conv = Conv2d(in_channels, out_channels, kernel_size, bias=bias)
-
-        self.bnorm = None
-        if bnorm:
-            self.bnorm = BatchNorm2d(out_channels)
-
-        self.relu = None
-        if relu:
-            self.relu = ReLU()
-
-    def forward(self, x):
-        x = self.conv(x)
-        if self.bnorm is not None:
-            x = self.bnorm(x)
-        if self.relu is not None:
-            x = self.relu(x)
-        return x
+from .layers import ConvBlock
+from ..utils.model import get_num_output_features, merge_tiles, tile_image_batch
 
 
 class MaxPooledLocalizer(Module):
