@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 # default value to use for selecting classes from probability outputs
-DEFAULT_PROB_CUTOFF = 0.4
+DEFAULT_PROB_CUTOFF = 0.5
 
 
 class Metrics:

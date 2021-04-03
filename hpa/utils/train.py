@@ -1,12 +1,11 @@
 import csv
-from statistics import mean
 
 import torch
 from torch.nn import BCEWithLogitsLoss
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
-from hpa.model.loss import FocalLoss
+from hpa.model.loss import ClassHeatmapLoss, FocalLoss
 from hpa.utils.metrics import calc_exact_matchs, calc_f1_scores, Metrics
 
 
@@ -494,32 +493,32 @@ def train_epoch2(model,
         The average loss
     """
     model.train()
-    metrics = Metrics(['loss', 'maxpool_loss', 'avgpool_loss'])
+    metrics = Metrics(['loss', 'segment_loss'])
 
     if progress:
         generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
     else:
         generator = dataloader
 
-    for batch_image, batch_label in generator:
+    segment_criterion = ClassHeatmapLoss()
+    for batch_image, batch_seg, batch_label in generator:
         batch_image = batch_image.to(device)
+        batch_seg = batch_seg.to(device)
         batch_label = batch_label.to(device)
 
         optimizer.zero_grad()
-        max_logits, avg_logits = model(batch_image)
+        class_maps, class_logits = model(batch_image)
 
-        maxpool_loss = criterion(max_logits, batch_label)
-        avgpool_loss = criterion(avg_logits, batch_label)
-        loss = maxpool_loss + avgpool_loss
-
+        loss = criterion(class_logits, batch_label)
         loss.backward()
         if clip_grad_value is not None:
             clip_grad_norm_(model.parameters(), clip_grad_value)
         optimizer.step()
 
+        # calculate the segment loss on the side
+        segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
         metrics.insert('loss', loss.item())
-        metrics.insert('maxpool_loss', maxpool_loss.item())
-        metrics.insert('avgpool_loss', avgpool_loss.item())
+        metrics.insert('segment_loss', segment_loss.item())
     return metrics.average()
 
 
@@ -551,7 +550,7 @@ def test_epoch2(model,
     """
     model.eval()
 
-    metric_names = ['loss', 'maxpool_loss', 'avgpool_loss']
+    metric_names = ['loss', 'segment_loss']
     if calc_bce:
         bce_fn = BCEWithLogitsLoss()
         metric_names.append('bce_loss')
@@ -566,31 +565,29 @@ def test_epoch2(model,
     else:
         generator = dataloader
 
+    segment_criterion = ClassHeatmapLoss()
     with torch.no_grad():
-        for batch_image, batch_label in generator:
+        for batch_image, batch_seg, batch_label in generator:
             batch_image = batch_image.to(device)
+            batch_seg = batch_seg.to(device)
             batch_label = batch_label.to(device)
 
-            max_logits, avg_logits = model(batch_image)
-            logits = 0.5 * (max_logits + avg_logits)
-
-            maxpool_loss = criterion(max_logits, batch_label)
-            avgpool_loss = criterion(avg_logits, batch_label)
-            loss = 0.5 * maxpool_loss + 0.5 * avgpool_loss
+            class_maps, class_logits = model(batch_image)
+            loss = criterion(class_logits, batch_label)
+            segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
 
             metrics.insert('loss', loss.item())
-            metrics.insert('maxpool_loss', maxpool_loss.item())
-            metrics.insert('avgpool_loss', avgpool_loss.item())
+            metrics.insert('segment_loss', segment_loss.item())
 
             if calc_bce:
-                bce_loss = bce_fn(logits, batch_label)
+                bce_loss = bce_fn(class_logits, batch_label)
                 metrics.insert('bce_loss', bce_loss.item())
             if calc_focal:
-                focal_loss = focal_fn(logits, batch_label)
+                focal_loss = focal_fn(class_logits, batch_label)
                 metrics.insert('focal_loss', focal_loss.item())
 
-            exact_hits = calc_exact_matchs(logits, batch_label)
-            f1_values = calc_f1_scores(logits, batch_label)
+            exact_hits = calc_exact_matchs(class_logits, batch_label)
+            f1_values = calc_f1_scores(class_logits, batch_label)
 
             metrics.bulk_insert('exact', exact_hits.tolist())
             metrics.bulk_insert('f1', f1_values.tolist())
