@@ -465,6 +465,138 @@ def test_puzzlecam_epoch(model,
     return metrics.average()
 
 
+def train_epoch2(model,
+                 dataloader,
+                 criterion,
+                 optimizer,
+                 device,
+                 clip_grad_value=None,
+                 progress=False,
+                 epoch=None,
+                 n_batches=None):
+    """Train the model for an epoch
+
+    Parameters
+    ----------
+    model: hpa.model.localizers.DoublePooledLocalizer
+    dataloader: DataLoader
+    criterion: callable loss function
+    optimizer: pytorch optimizer
+    device: str or torch.device
+    clip_grad_value: float, optional
+    progress: bool, optional
+    epoch: int, optional
+    n_batches: int, optional
+
+    Returns
+    -------
+    tuple[float]
+        The average loss
+    """
+    model.train()
+    metrics = Metrics(['loss', 'maxpool_loss', 'avgpool_loss'])
+
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
+    else:
+        generator = dataloader
+
+    for batch_image, batch_label in generator:
+        batch_image = batch_image.to(device)
+        batch_label = batch_label.to(device)
+
+        optimizer.zero_grad()
+        max_logits, avg_logits = model(batch_image)
+
+        maxpool_loss = criterion(max_logits, batch_label)
+        avgpool_loss = criterion(avg_logits, batch_label)
+        loss = maxpool_loss + avgpool_loss
+
+        loss.backward()
+        if clip_grad_value is not None:
+            clip_grad_norm_(model.parameters(), clip_grad_value)
+        optimizer.step()
+
+        metrics.insert('loss', loss.item())
+        metrics.insert('maxpool_loss', maxpool_loss.item())
+        metrics.insert('avgpool_loss', avgpool_loss.item())
+    return metrics.average()
+
+
+def test_epoch2(model,
+                dataloader,
+                criterion,
+                device,
+                calc_bce=False,
+                calc_focal=False,
+                progress=False,
+                epoch=None,
+                n_batches=None):
+    """Run the model for a test epoch
+
+    Parameters
+    ----------
+    model: hpa.model.localizers.DoublePooledLocalizer
+    dataloader: DataLoader
+    criterion: callable loss function
+    device: str or torch.device
+    progress: bool, optional
+    epoch: int, optional
+    n_batches: int, optional
+
+    Returns
+    -------
+    tuple[float]
+        The average loss and the average accuracy
+    """
+    model.eval()
+
+    metric_names = ['loss', 'maxpool_loss', 'avgpool_loss']
+    if calc_bce:
+        bce_fn = BCEWithLogitsLoss()
+        metric_names.append('bce_loss')
+    if calc_focal:
+        focal_fn = FocalLoss()
+        metric_names.append('focal_loss')
+    metric_names += ['exact', 'f1']
+    metrics = Metrics(metric_names)
+
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (testing)', total=n_batches)
+    else:
+        generator = dataloader
+
+    with torch.no_grad():
+        for batch_image, batch_label in generator:
+            batch_image = batch_image.to(device)
+            batch_label = batch_label.to(device)
+
+            max_logits, avg_logits = model(batch_image)
+            logits = 0.5 * (max_logits + avg_logits)
+
+            maxpool_loss = criterion(max_logits, batch_label)
+            avgpool_loss = criterion(avg_logits, batch_label)
+            loss = 0.5 * maxpool_loss + 0.5 * avgpool_loss
+
+            metrics.insert('loss', loss.item())
+            metrics.insert('maxpool_loss', maxpool_loss.item())
+            metrics.insert('avgpool_loss', avgpool_loss.item())
+
+            if calc_bce:
+                bce_loss = bce_fn(logits, batch_label)
+                metrics.insert('bce_loss', bce_loss.item())
+            if calc_focal:
+                focal_loss = focal_fn(logits, batch_label)
+                metrics.insert('focal_loss', focal_loss.item())
+
+            exact_hits = calc_exact_matchs(logits, batch_label)
+            f1_values = calc_f1_scores(logits, batch_label)
+
+            metrics.bulk_insert('exact', exact_hits.tolist())
+            metrics.bulk_insert('f1', f1_values.tolist())
+    return metrics.average()
+
+
 def checkpoint(model, filepath):
     """Save the state of the model
     To restore the model do the following:
