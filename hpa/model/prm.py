@@ -3,6 +3,12 @@ import torch.nn.functional as F
 from torch.autograd import Function
 
 
+def median_filter(input):
+    batch_size, num_channels, h, w = input.size()
+    threshold, _ = torch.median(input.view(batch_size, num_channels, h * w), dim=2)
+    return threshold.contiguous().view(batch_size, num_channels, 1, 1)
+
+
 class PeakStimulation(Function):
 
     @staticmethod

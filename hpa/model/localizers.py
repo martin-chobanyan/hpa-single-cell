@@ -5,6 +5,7 @@ from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, BatchNorm1d, BatchNo
                       Flatten, Module, ReLU, Sequential, Linear, Parameter)
 
 from .layers import ConvBlock
+from .prm import median_filter, peak_stimulation
 from ..utils.model import get_num_output_features, merge_tiles, tile_image_batch
 
 
@@ -222,6 +223,31 @@ class PooledLocalizer(Module):
         if self.return_maps:
             return class_maps, class_logits
         return class_logits
+
+
+class PeakResponseLocalizer(Module):
+    def __init__(self, cnn, return_maps=True, return_peaks=False, window_size=3):
+        super().__init__()
+        self.cnn = cnn
+        self.return_maps = return_maps
+        self.return_peaks = return_peaks
+        self.window_size = window_size
+
+    def forward(self, x):
+        class_maps = self.cnn(x)
+
+        peak_list, class_logits = peak_stimulation(input=class_maps,
+                                                   return_aggregation=True,
+                                                   win_size=self.window_size,
+                                                   peak_filter=median_filter)
+
+        result = []
+        if self.return_maps:
+            result.append(class_maps)
+        if self.return_peaks:
+            result.append(peak_list)
+        result.append(class_logits)
+        return tuple(result)
 
 
 class PuzzleCAM(PooledLocalizer):
