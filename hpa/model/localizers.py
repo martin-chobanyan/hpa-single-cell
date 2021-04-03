@@ -246,8 +246,9 @@ class PeakResponseLocalizer(Module):
             result.append(class_maps)
         if self.return_peaks:
             result.append(peak_list)
-        result.append(class_logits)
-        return tuple(result)
+        if len(result) > 0:
+            return tuple(result + [class_logits])
+        return class_logits
 
 
 class PuzzleCAM(PooledLocalizer):
