@@ -22,8 +22,31 @@ class AdjustableCropCompose(HPACompose):
         self.crop_transform.width = shape[1]
 
 
+class RandomCropCycle(A.RandomCrop):
+    def __init__(self, min_dim, max_dim, cycle_size):
+        # initialize the size using the maximum dimensions
+        super().__init__(height=max_dim, width=max_dim)
+        self.min_dim = min_dim
+        self.max_dim = max_dim
+        self.cycle_size = cycle_size
+        self.count = 0
+
+    def sample_new_crop_size(self):
+        crop_size = np.random.randint(self.min_dim, self.max_dim + 1)
+        self.height = crop_size
+        self.width = crop_size
+
+    def apply(self, img, **params):
+        if self.count == self.cycle_size:
+            self.sample_new_crop_size()
+            self.count = 0
+        self.count += 1
+        return super().apply(img, **params)
+
+
 class ToBinaryCellSegmentation(A.ImageOnlyTransform):
     """Transform a cell segmentation array (with values 0, 1, ..., num_cells) to a binary cell segmentation array"""
+
     def __init__(self, dtype=np.float32):
         super().__init__(p=1.0)
         self.dtype = dtype
