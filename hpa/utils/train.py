@@ -2,6 +2,7 @@ import csv
 
 import torch
 from torch.nn import BCEWithLogitsLoss
+from torch.nn.functional import interpolate
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
@@ -472,7 +473,8 @@ def train_epoch2(model,
                  clip_grad_value=None,
                  progress=False,
                  epoch=None,
-                 n_batches=None):
+                 n_batches=None,
+                 fix_seg_dim=False):
     """Train the model for an epoch
 
     Parameters
@@ -516,6 +518,9 @@ def train_epoch2(model,
         optimizer.step()
 
         # calculate the segment loss on the side
+        if fix_seg_dim:
+            cmap_dim = class_maps.shape[-1]
+            batch_seg = interpolate(batch_seg, size=(cmap_dim, cmap_dim), mode='bilinear', align_corners=False)
         segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
         metrics.insert('loss', loss.item())
         metrics.insert('segment_loss', segment_loss.item())
@@ -530,7 +535,8 @@ def test_epoch2(model,
                 calc_focal=False,
                 progress=False,
                 epoch=None,
-                n_batches=None):
+                n_batches=None,
+                fix_seg_dim=False):
     """Run the model for a test epoch
 
     Parameters
@@ -574,6 +580,10 @@ def test_epoch2(model,
 
             class_maps, class_logits = model(batch_image)
             loss = criterion(class_logits, batch_label)
+
+            if fix_seg_dim:
+                cmap_dim = class_maps.shape[-1]
+                batch_seg = interpolate(batch_seg, size=(cmap_dim, cmap_dim), mode='bilinear', align_corners=False)
             segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
 
             metrics.insert('loss', loss.item())

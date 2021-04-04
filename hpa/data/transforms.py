@@ -23,12 +23,17 @@ class AdjustableCropCompose(HPACompose):
 
 
 class RandomCropCycle(A.RandomCrop):
-    def __init__(self, min_dim, max_dim, cycle_size):
+    def __init__(self, min_dim, max_dim, cycle_size, dual=False):
         # initialize the size using the maximum dimensions
         super().__init__(height=max_dim, width=max_dim)
         self.min_dim = min_dim
         self.max_dim = max_dim
-        self.cycle_size = cycle_size
+
+        self.dual = dual
+        if self.dual:
+            self.cycle_size = 2 * cycle_size
+        else:
+            self.cycle_size = cycle_size
         self.count = 0
 
     def sample_new_crop_size(self):
@@ -37,7 +42,7 @@ class RandomCropCycle(A.RandomCrop):
         self.width = crop_size
 
     def apply(self, img, **params):
-        if self.count == self.cycle_size:
+        if self.count % self.cycle_size == 0:
             self.sample_new_crop_size()
             self.count = 0
         self.count += 1
