@@ -63,13 +63,13 @@ if __name__ == '__main__':
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     SEG_DIR = config['data']['seg_dir']
-    # NUM_WORKERS = 0
+    NUM_WORKERS = 4
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    train_idx = train_idx.head(64)
-    val_idx = val_idx.head(64)
+    # train_idx = train_idx.head(64)
+    # val_idx = val_idx.head(64)
 
     train_data = RGBYWithSegmentation(data_idx=train_idx,
                                       data_dir=DATA_DIR,
@@ -87,8 +87,8 @@ if __name__ == '__main__':
                                     seg_transforms=seg_transform_fn,
                                     tensorize=True)
 
-    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=BATCH_SIZE)
+    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS)
+    val_loader = DataLoader(val_data, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS)
 
     # -------------------------------------------------------------------------------------------
     # Prepare the model
