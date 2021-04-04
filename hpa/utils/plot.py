@@ -32,7 +32,7 @@ def plot_predicted_probs(probs, tgt_class_idx, figsize=(15, 5)):
     return ax
 
 
-def overlay_heatmaps(cell_img, heatmaps, pred_segs):
+def overlay_heatmaps(cell_img, heatmaps, pred_segs, alpha1=0.75, alpha2=0.5):
     """Overlay the predicted heatmaps and segmentation maps over the input image
 
     Parameters
@@ -40,6 +40,8 @@ def overlay_heatmaps(cell_img, heatmaps, pred_segs):
     cell_img: PIL.Image
     heatmaps: dict[int, numpy.ndarray]
     pred_segs: dict[int, numpy.ndarray]
+    alpha1: float, optional
+    alpha2: float, optional
     """
     img_dim = cell_img.size[0]
     for label_id, pred in pred_segs.items():
@@ -50,7 +52,7 @@ def overlay_heatmaps(cell_img, heatmaps, pred_segs):
 
         colors = 'gray'
         ax1.imshow(cell_img)
-        ax1.imshow(heatmap, cmap=colors, vmin=0, vmax=1, alpha=0.75)
+        ax1.imshow(heatmap, cmap=colors, vmin=0, vmax=1, alpha=alpha1)
         ax1.set_title(f'Label: {label_id} with heatmap')
         ax1.axis('off')
 
@@ -61,7 +63,7 @@ def overlay_heatmaps(cell_img, heatmaps, pred_segs):
 
         colors = 'inferno'
         ax3.imshow(cell_img.resize(pred.shape))
-        ax3.imshow(pred, cmap=colors, alpha=0.5)
+        ax3.imshow(pred, cmap=colors, alpha=alpha2)
         ax3.set_title(f'Label: {label_id} with filtered heatmap')
         ax3.axis('off')
         plt.show()
