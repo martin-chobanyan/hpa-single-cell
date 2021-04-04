@@ -4,13 +4,14 @@ from yaml import safe_load
 import albumentations as A
 import pandas as pd
 import torch
-from torch.nn import L1Loss
+from torch.nn import Conv2d, L1Loss, ReLU, Sequential
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from hpa.data import RGBYWithSegmentation, N_CHANNELS, CHANNEL_MEANS, CHANNEL_STDS
 from hpa.data.transforms import HPACompose, ToBinaryCellSegmentation
 from hpa.model.bestfitting.densenet import DensenetClass
+from hpa.model.layers import ConvBlock
 from hpa.model.localizers import DecomposedDensenet, PeakResponseLocalizer
 from hpa.model.loss import ClassHeatmapLoss, FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
@@ -22,7 +23,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm0.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm1.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -56,13 +57,13 @@ if __name__ == '__main__':
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     SEG_DIR = config['data']['seg_dir']
-    NUM_WORKERS = 6
+    NUM_WORKERS = 4
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'train-index.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'val-index.csv'))
 
-    train_idx = train_idx.head(64)
-    val_idx = val_idx.head(64)
+    # train_idx = train_idx.head(64)
+    # val_idx = val_idx.head(64)
 
     train_data = RGBYWithSegmentation(data_idx=train_idx,
                                       data_dir=DATA_DIR,
@@ -99,11 +100,16 @@ if __name__ == '__main__':
         pretrained_state_dict = torch.load(PRETRAINED_PATH)['state_dict']
         densenet_model.load_state_dict(pretrained_state_dict)
 
-    # decompose the model
-    decomposed_model = DecomposedDensenet(densenet_model=densenet_model, max_classes=True)
+    densenet_encoder = Sequential(densenet_model.conv1,
+                                  densenet_model.encoder2,
+                                  densenet_model.encoder3,
+                                  densenet_model.encoder4,
+                                  densenet_model.encoder5,
+                                  ReLU())
 
-    # define the localizer model
-    model = PeakResponseLocalizer(cnn=decomposed_model, return_maps=True, return_peaks=False)
+    backbone_cnn = Sequential(densenet_encoder, Conv2d(1024, 18, 1))
+
+    model = PeakResponseLocalizer(cnn=backbone_cnn, return_maps=True, return_peaks=False)
     model = model.to(DEVICE)
 
     classify_criterion = FocalSymmetricLovaszHardLogLoss()
