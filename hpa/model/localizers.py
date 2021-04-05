@@ -2,7 +2,7 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
-                      Flatten, Module, ReLU, Sequential, Linear, Parameter)
+                      Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample)
 
 from .layers import ConvBlock
 from .prm import median_filter, peak_stimulation
@@ -226,21 +226,27 @@ class PooledLocalizer(Module):
 
 
 class PeakResponseLocalizer(Module):
-    def __init__(self, cnn, return_maps=True, return_peaks=False, window_size=3):
+    def __init__(self, cnn, return_maps=True, return_peaks=False, window_size=3, scale_factor=1):
         super().__init__()
         self.cnn = cnn
         self.return_maps = return_maps
         self.return_peaks = return_peaks
         self.window_size = window_size
+        self.scale_factor = scale_factor
+
+        self.upsample = None
+        if self.scale_factor > 1:
+            self.upsample = Upsample(scale_factor=self.scale_factor, mode='bilinear', align_corners=True)
 
     def forward(self, x):
         class_maps = self.cnn(x)
+        if self.upsample is not None:
+            class_maps = self.upsample(class_maps)
 
         peak_list, class_logits = peak_stimulation(input=class_maps,
                                                    return_aggregation=True,
                                                    win_size=self.window_size,
                                                    peak_filter=median_filter)
-
         result = []
         if self.return_maps:
             result.append(class_maps)

@@ -23,7 +23,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm2.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm4.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -41,11 +41,12 @@ if __name__ == '__main__':
     dual_train_transform_fn = HPACompose([
         A.Resize(IMG_DIM, IMG_DIM),
         A.Flip(p=0.5),
+        A.ShiftScaleRotate(p=0.5),
         RandomCropCycle(min_dim=MIN_CROP, max_dim=IMG_DIM, cycle_size=BATCH_SIZE, dual=True)
     ])
 
     dual_val_transform_fn = HPACompose([
-        A.Resize(IMG_DIM, IMG_DIM),
+        A.Resize(IMG_DIM, IMG_DIM)
     ])
 
     img_transform_fn = HPACompose([
@@ -94,6 +95,7 @@ if __name__ == '__main__':
     # Prepare the model
     # -------------------------------------------------------------------------------------------
     DEVICE = 'cuda'
+    SCALE_FACTOR = config['model']['scale_factor']
     LR = config['model']['lr']
     N_EPOCHS = config['model']['epochs']
     PRETRAINED_PATH = config['pretrained_path']
@@ -115,7 +117,7 @@ if __name__ == '__main__':
 
     backbone_cnn = Sequential(densenet_encoder, Conv2d(1024, 18, 1))
 
-    model = PeakResponseLocalizer(cnn=backbone_cnn, return_maps=True, return_peaks=False)
+    model = PeakResponseLocalizer(cnn=backbone_cnn, return_maps=True, return_peaks=False, scale_factor=SCALE_FACTOR)
     model = model.to(DEVICE)
 
     classify_criterion = FocalSymmetricLovaszHardLogLoss()
