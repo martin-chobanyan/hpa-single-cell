@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
+from ..data.transforms import ToBinaryCellSegmentation
+
 
 def plot_example(cell_img, green_img, seg, figsize=(18, 6)):
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize)
@@ -64,6 +66,43 @@ def overlay_heatmaps(cell_img, heatmaps, pred_segs, alpha1=0.75, alpha2=0.5):
         colors = 'inferno'
         ax3.imshow(cell_img.resize(pred.shape))
         ax3.imshow(pred, cmap=colors, alpha=alpha2)
+        ax3.set_title(f'Label: {label_id} with filtered heatmap')
+        ax3.axis('off')
+        plt.show()
+
+
+def overlay_peaks(cell_img, seg, peaks, alpha1=0.75, alpha2=0.5):
+    """Overlay the class response peaks
+
+    Parameters
+    ----------
+    cell_img: PIL.Image
+    seg: numpy.ndarray
+    peaks: dict[int, numpy.ndarray]
+    alpha1: float, optional
+    alpha2: float, optional
+    """
+    seg_img = ToBinaryCellSegmentation()(image=seg)['image']
+
+    img_dim = cell_img.size[0]
+    for label_id, channel_peaks in peaks.items():
+        heatmap = resize(channel_peaks, (img_dim, img_dim))
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
+
+        colors = 'gray'
+        ax1.imshow(cell_img)
+        ax1.imshow(heatmap, cmap=colors, vmin=0, vmax=1, alpha=alpha1)
+        ax1.set_title(f'Label: {label_id} with heatmap')
+        ax1.axis('off')
+
+        colors = 'seismic'
+        ax2.imshow(heatmap, cmap=colors, vmin=0, vmax=1)
+        ax2.set_title('Heatmap')
+        ax2.axis('off')
+
+        colors = 'gray'
+        ax3.imshow(seg_img)
+        ax3.imshow(heatmap, cmap=colors, vmin=0, vmax=1, alpha=alpha2)
         ax3.set_title(f'Label: {label_id} with filtered heatmap')
         ax3.axis('off')
         plt.show()
