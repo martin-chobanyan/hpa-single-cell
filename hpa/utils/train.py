@@ -6,7 +6,7 @@ from torch.nn.functional import interpolate
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 
-from hpa.model.loss import ClassHeatmapLoss, FocalLoss
+from hpa.model.loss import BackgroundLoss, ClassHeatmapLoss, FocalLoss
 from hpa.utils.metrics import calc_exact_matchs, calc_f1_scores, Metrics
 
 
@@ -587,6 +587,127 @@ def test_epoch2(model,
             segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
 
             metrics.insert('loss', loss.item())
+            metrics.insert('segment_loss', segment_loss.item())
+
+            if calc_bce:
+                bce_loss = bce_fn(class_logits, batch_label)
+                metrics.insert('bce_loss', bce_loss.item())
+            if calc_focal:
+                focal_loss = focal_fn(class_logits, batch_label)
+                metrics.insert('focal_loss', focal_loss.item())
+
+            exact_hits = calc_exact_matchs(class_logits, batch_label)
+            f1_values = calc_f1_scores(class_logits, batch_label)
+
+            metrics.bulk_insert('exact', exact_hits.tolist())
+            metrics.bulk_insert('f1', f1_values.tolist())
+    return metrics.average()
+
+
+def train_epoch3(model,
+                 dataloader,
+                 criterion,
+                 optimizer,
+                 device,
+                 w_classify=0.5,
+                 w_background=0.5,
+                 clip_grad_value=None,
+                 progress=False,
+                 epoch=None,
+                 n_batches=None,
+                 fix_seg_dim=False):
+    model.train()
+    metrics = Metrics(['loss', 'classify_loss', 'background_loss', 'segment_loss'])
+
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (training)', total=n_batches)
+    else:
+        generator = dataloader
+
+    segment_criterion = ClassHeatmapLoss()
+    background_criterion = BackgroundLoss()
+
+    for batch_image, batch_seg, batch_label in generator:
+        batch_image = batch_image.to(device)
+        batch_seg = batch_seg.to(device)
+        batch_label = batch_label.to(device)
+
+        optimizer.zero_grad()
+        class_maps, class_logits = model(batch_image)
+
+        classify_loss = criterion(class_logits, batch_label)
+        background_loss = background_criterion(class_maps, batch_seg, batch_label)
+        loss = w_classify * classify_loss + w_background * background_loss
+
+        loss.backward()
+        if clip_grad_value is not None:
+            clip_grad_norm_(model.parameters(), clip_grad_value)
+        optimizer.step()
+
+        # calculate the segment loss on the side
+        if fix_seg_dim:
+            cmap_dim = class_maps.shape[-1]
+            batch_seg = interpolate(batch_seg, size=(cmap_dim, cmap_dim), mode='bilinear', align_corners=False)
+        segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
+        metrics.insert('loss', loss.item())
+        metrics.insert('classify_loss', classify_loss.item())
+        metrics.insert('background_loss', background_loss.item())
+        metrics.insert('segment_loss', segment_loss.item())
+    return metrics.average()
+
+
+def test_epoch3(model,
+                dataloader,
+                criterion,
+                device,
+                w_classify=0.5,
+                w_background=0.5,
+                calc_bce=False,
+                calc_focal=False,
+                progress=False,
+                epoch=None,
+                n_batches=None,
+                fix_seg_dim=False):
+    model.eval()
+
+    metric_names = ['loss', 'classify_loss', 'background_loss', 'segment_loss']
+    if calc_bce:
+        bce_fn = BCEWithLogitsLoss()
+        metric_names.append('bce_loss')
+    if calc_focal:
+        focal_fn = FocalLoss()
+        metric_names.append('focal_loss')
+    metric_names += ['exact', 'f1']
+    metrics = Metrics(metric_names)
+
+    if progress:
+        generator = tqdm(dataloader, desc=f'Epoch {epoch} (testing)', total=n_batches)
+    else:
+        generator = dataloader
+
+    segment_criterion = ClassHeatmapLoss()
+    background_criterion = BackgroundLoss()
+
+    with torch.no_grad():
+        for batch_image, batch_seg, batch_label in generator:
+            batch_image = batch_image.to(device)
+            batch_seg = batch_seg.to(device)
+            batch_label = batch_label.to(device)
+
+            class_maps, class_logits = model(batch_image)
+
+            classify_loss = criterion(class_logits, batch_label)
+            background_loss = background_criterion(class_maps, batch_seg, batch_label)
+            loss = w_classify * classify_loss + w_background * background_loss
+
+            if fix_seg_dim:
+                cmap_dim = class_maps.shape[-1]
+                batch_seg = interpolate(batch_seg, size=(cmap_dim, cmap_dim), mode='bilinear', align_corners=False)
+            segment_loss = segment_criterion(class_maps, batch_seg, batch_label)
+
+            metrics.insert('loss', loss.item())
+            metrics.insert('classify_loss', classify_loss.item())
+            metrics.insert('background_loss', background_loss.item())
             metrics.insert('segment_loss', segment_loss.item())
 
             if calc_bce:
