@@ -71,7 +71,7 @@ def overlay_heatmaps(cell_img, heatmaps, pred_segs, alpha1=0.75, alpha2=0.5):
         plt.show()
 
 
-def overlay_peaks(cell_img, seg, peaks, alpha1=0.75, alpha2=0.5):
+def overlay_peaks(cell_img, seg, peaks, alpha1=0.6, alpha2=0.8):
     """Overlay the class response peaks
 
     Parameters
@@ -82,9 +82,9 @@ def overlay_peaks(cell_img, seg, peaks, alpha1=0.75, alpha2=0.5):
     alpha1: float, optional
     alpha2: float, optional
     """
-    seg_img = ToBinaryCellSegmentation()(image=seg)['image']
-
     img_dim = cell_img.size[0]
+    seg_img = ToBinaryCellSegmentation()(image=seg)['image']
+    seg_img = resize(seg_img, (img_dim, img_dim))
     for label_id, channel_peaks in peaks.items():
         heatmap = resize(channel_peaks, (img_dim, img_dim))
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
