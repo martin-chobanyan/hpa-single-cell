@@ -22,8 +22,12 @@ class Cell:
         self.preds = set()
 
     def calc_intersect(self, seg_mask):
-        intersect_pxls = seg_mask[self.cell_mask].sum()
-        return intersect_pxls / self.total_pxls
+        intersect_pxls = seg_mask[self.cell_mask]
+        return intersect_pxls[np.nonzero(intersect_pxls)].size / self.total_pxls
+
+    def calc_confidence(self, heatmap):
+        intersect_pxls = heatmap[self.cell_mask]
+        return intersect_pxls[np.nonzero(intersect_pxls)].mean()
 
     def add_prediction(self, label, confidence):
         self.preds.add((label, confidence))

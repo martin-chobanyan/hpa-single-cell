@@ -44,6 +44,20 @@ def assign_cell_labels_v2(cells, pred_map, intersect_cutoff, class_probs):
     return cells
 
 
+def assign_cell_labels_v3(cells, heatmaps, intersect_cutoff):
+    for cell in cells:
+        negative = True
+        for label_id, heatmap in heatmaps.items():
+            p_intersect = cell.calc_intersect(heatmap)
+            if p_intersect > intersect_cutoff:
+                confidence = cell.calc_confidence(heatmap)
+                cell.add_prediction(label_id, confidence)
+                negative = False
+        if negative:
+            cell.add_prediction(NEGATIVE_LABEL, DEFAULT_CONFIDENCE)
+    return cells
+
+
 def get_percent_labeled_cells(cells, verbose=True):
     count = 0
     for cell in cells:
