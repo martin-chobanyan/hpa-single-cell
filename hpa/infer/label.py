@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 
 from hpa.data import NEGATIVE_LABEL, N_CLASSES
@@ -22,6 +24,7 @@ def assign_cell_labels_v1(cells, pred_map, intersect_cutoff, confidence_map=None
     return cells
 
 
+# not successful...
 def assign_cell_labels_v2(cells, pred_map, intersect_cutoff, class_probs):
     for cell in cells:
         assigned = False
@@ -44,16 +47,47 @@ def assign_cell_labels_v2(cells, pred_map, intersect_cutoff, class_probs):
     return cells
 
 
-def assign_cell_labels_v3(cells, heatmaps, intersect_cutoff):
+def assign_cell_labels_v3(cells, peak_heatmaps, intersect_cutoff):
     for cell in cells:
         negative = True
-        for label_id, heatmap in heatmaps.items():
+        for label_id, heatmap in peak_heatmaps.items():
             p_intersect = cell.calc_intersect(heatmap)
             if p_intersect > intersect_cutoff:
                 confidence = cell.calc_confidence(heatmap)
                 cell.add_prediction(label_id, confidence)
                 negative = False
         if negative:
+            cell.add_prediction(NEGATIVE_LABEL, DEFAULT_CONFIDENCE)
+    return cells
+
+
+def assign_cell_labels_v4(cells, peaks, peak_recall_cutoff):
+    """Keep channel peak segmentations if the recall of their cell intersection is greater than a threshold
+
+    Parameters
+    ----------
+    cells: list[hpa.infer.cells.Cell]
+    peaks: list[hpa.infer.cells.Segmentation]
+    peak_recall_cutoff: float
+
+    Returns
+    -------
+    list[hpa.infer.cells.Cell]
+    """
+    cell_results = defaultdict(list)
+    for peak in peaks:
+        for cell in cells:
+            peak_intersection = cell.get_shapely_intersection(peak.geom)
+            recall = peak_intersection.area / peak.geom.area
+            if recall > peak_recall_cutoff:
+                cell_results[cell.cell_id].append(peak)
+    for cell in cells:
+        max_peaks = defaultdict(int)
+        for peak in cell_results[cell.cell_id]:
+            max_peaks[peak.label] = max(peak.confidence, max_peaks[peak.label])
+        for label, confidence in max_peaks.items():
+            cell.add_prediction(label, confidence)
+        if len(max_peaks) == 0:
             cell.add_prediction(NEGATIVE_LABEL, DEFAULT_CONFIDENCE)
     return cells
 

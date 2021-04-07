@@ -1,2 +1,2 @@
-from .cells import Cell, get_cells
+from .cells import Cell, Segmentation, get_cells
 from .label import *
