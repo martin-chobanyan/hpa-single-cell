@@ -108,6 +108,38 @@ def overlay_peaks(cell_img, seg, peaks, alpha1=0.6, alpha2=0.8):
         plt.show()
 
 
+def overlay_cell_assignments(cells, seg, cmap='PRGn', figsize=(10, 10)):
+    """Plot the cell segmentation with the predicted cell labels
+
+    Note: Slight distortion in label placement due to cell center calculation
+
+    Parameters
+    ----------
+    cells: list[hpa.infer.cells.Cell]
+    seg: numpy.ndarray
+    cmap: str
+    figsize: tuple[int]
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    to_binary = ToBinaryCellSegmentation()
+    ax.imshow(to_binary(image=seg)['image'], cmap=cmap)
+    ax.axis('off')
+
+    num_negative = 0
+    for cell in cells:
+        pred_labels = sorted([str(label_id) for label_id, _ in cell.preds])
+        pred_labels = '|'.join(pred_labels)
+        num_negative += '18' in pred_labels
+
+        ys, xs = np.where(cell.cell_mask)
+        x_center = (np.max(xs) + np.min(xs)) / 2
+        y_center = (np.max(ys) + np.min(ys)) / 2
+
+        ax.annotate(f'{pred_labels}', (x_center, y_center), color='white', weight='bold')
+    ax.set_title(f'Predictions ({num_negative} negative cells)')
+    plt.show()
+
+
 def plot_sample(imgs, figsize=(10, 10)):
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     ((ax_green, ax_blue), (ax_red, ax_yellow)) = axes
