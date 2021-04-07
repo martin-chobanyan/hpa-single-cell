@@ -127,11 +127,12 @@ def overlay_cell_assignments(cells, seg, cmap='PRGn', figsize=(10, 10)):
 
     num_negative = 0
     for cell in cells:
-        pred_labels = sorted([str(label_id) for label_id, _ in cell.preds])
-        pred_labels = '|'.join(pred_labels)
+        pred_labels = sorted([label_id for label_id, _ in cell.preds])
+        pred_labels = '|'.join([str(p) for p in pred_labels])
         num_negative += '18' in pred_labels
         ys, xs = np.where(cell.cell_mask)
-        ax.annotate(f'{pred_labels}', (np.mean(xs), np.mean(ys)), color='white', weight='bold')
+        cell_txt = f'Cell {cell.cell_id}\n{pred_labels}'
+        ax.annotate(cell_txt, (np.mean(xs), np.mean(ys)), color='white', weight='bold')
     ax.set_title(f'Predictions ({num_negative} negative cells)')
     plt.show()
 

@@ -21,12 +21,15 @@ class Cell:
         self.rle_encoding = encode_binary_mask(cell_mask).decode("utf-8")
         self.preds = set()
 
+    def get_intersection(self, seg_mask):
+        return seg_mask[self.cell_mask]
+
     def calc_intersect(self, seg_mask):
-        intersect_pxls = seg_mask[self.cell_mask]
+        intersect_pxls = self.get_intersection(seg_mask)
         return intersect_pxls[np.nonzero(intersect_pxls)].size / self.total_pxls
 
     def calc_confidence(self, heatmap):
-        intersect_pxls = heatmap[self.cell_mask]
+        intersect_pxls = self.get_intersection(heatmap)
         return intersect_pxls[np.nonzero(intersect_pxls)].mean()
 
     def add_prediction(self, label, confidence):
