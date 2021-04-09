@@ -71,4 +71,7 @@ def calc_f1_scores(logits, labels, prob_cutoff=DEFAULT_PROB_CUTOFF, eps=1e-9):
     precs = true_pos / (total_preds + eps)
     recall = true_pos / (total_labels + eps)
     f1_score = 2 * (precs * recall) / (precs + recall + eps)
-    return f1_score
+
+    # ignore instances with negative labels
+    valid_mask = total_labels > 0
+    return f1_score[valid_mask]
