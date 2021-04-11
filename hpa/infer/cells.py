@@ -2,7 +2,7 @@ import numpy as np
 from shapely.geos import TopologicalError
 
 from .misc import encode_binary_mask
-from ..segment.shapes import mask_to_polygons
+# from ..segment.shapes import mask_to_polygons
 
 
 class Cell:
@@ -28,11 +28,11 @@ class Cell:
 
         # extract the shapely Polygon for the cell segmentation
         self.geom = None
-        if extract_geom:
-            geom_list = mask_to_polygons(cell_mask)
-            if len(geom_list) > 1:
-                print(f'Warning: more than one polygon extracted for cell #{cell_id}')
-            self.geom = geom_list[0].buffer(0)
+        # if extract_geom:
+        #     geom_list = mask_to_polygons(cell_mask)
+        #     if len(geom_list) > 1:
+        #         print(f'Warning: more than one polygon extracted for cell #{cell_id}')
+        #     self.geom = geom_list[0].buffer(0)
 
     def get_shapely_intersection(self, other_geom):
         """Find the intersection of this cell with a shapely Polygon
