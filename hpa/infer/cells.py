@@ -8,7 +8,7 @@ from ..segment.shapes import mask_to_polygons
 class Cell:
     """Helper class for dealing with cells in images"""
 
-    def __init__(self, cell_id, cell_mask):
+    def __init__(self, cell_id, cell_mask, extract_geom=False):
         """Initialization
 
         Parameters
@@ -16,6 +16,7 @@ class Cell:
         cell_id: int
             The integer ID of the cell. This cannot be zero (the background value).
         cell_mask: np.ndarray
+        extract_geom: bool, optional
         """
         self.cell_id = cell_id
         self.cell_mask = cell_mask
@@ -26,10 +27,12 @@ class Cell:
         self.rle_encoding = encode_binary_mask(cell_mask).decode("utf-8")
 
         # extract the shapely Polygon for the cell segmentation
-        geom_list = mask_to_polygons(cell_mask)
-        if len(geom_list) > 1:
-            print(f'Warning: more than one polygon extracted for cell #{cell_id}')
-        self.geom = geom_list[0].buffer(0)
+        self.geom = None
+        if extract_geom:
+            geom_list = mask_to_polygons(cell_mask)
+            if len(geom_list) > 1:
+                print(f'Warning: more than one polygon extracted for cell #{cell_id}')
+            self.geom = geom_list[0].buffer(0)
 
     def get_shapely_intersection(self, other_geom):
         """Find the intersection of this cell with a shapely Polygon
@@ -42,6 +45,8 @@ class Cell:
         -------
         shapely.geometry.Polygon
         """
+        if self.geom is None:
+            raise ValueError('Cell geometry not yet extracted!')
         try:
             intersection = self.geom.intersection(other_geom)
         except TopologicalError:
