@@ -28,6 +28,7 @@ def plot_predicted_probs(probs, tgt_class_idx, figsize=(15, 5)):
     ax.bar(bar_idx, probs, color='gray', alpha=0.8, label='')
     if len(tgt_class_idx) > 0:
         ax.bar(tgt_class_idx, probs[tgt_class_idx], color='blue', alpha=0.8, label='Selected Classes')
+    ax.set_ylim(0, 1)
     ax.set_xticks(bar_idx)
     ax.set_title('Class Predictions')
     plt.legend()
