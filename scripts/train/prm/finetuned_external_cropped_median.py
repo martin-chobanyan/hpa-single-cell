@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm9.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm10.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -56,7 +56,7 @@ if __name__ == '__main__':
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'misc', 'public-hpa', 'data2')
-    NUM_WORKERS = 4
+    NUM_WORKERS = 3
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'train.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'val.csv'))
@@ -74,7 +74,6 @@ if __name__ == '__main__':
     # Prepare the model
     # -------------------------------------------------------------------------------------------
     DEVICE = 'cuda'
-    SCALE_FACTOR = config['model']['scale_factor']
     LR = config['model']['lr']
     MIN_LR = config['model']['min_lr']
     LR_STEP = config['model']['lr_step']
@@ -99,7 +98,7 @@ if __name__ == '__main__':
 
     backbone_cnn = Sequential(densenet_encoder, ConvBlock(1024, 1024, kernel_size=3), Conv2d(1024, 18, 1))
 
-    model = PeakResponseLocalizer(cnn=backbone_cnn, return_maps=False, return_peaks=False, scale_factor=SCALE_FACTOR)
+    model = PeakResponseLocalizer(cnn=backbone_cnn, return_maps=False, return_peaks=False)
     model = model.to(DEVICE)
 
     criterion = FocalSymmetricLovaszHardLogLoss()
