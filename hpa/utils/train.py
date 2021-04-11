@@ -43,6 +43,7 @@ def train_epoch(model,
                 criterion,
                 optimizer,
                 device,
+                accum_grad=0,
                 clip_grad_value=None,
                 progress=False,
                 epoch=None,
@@ -56,6 +57,7 @@ def train_epoch(model,
     criterion: callable loss function
     optimizer: pytorch optimizer
     device: str or torch.device
+    accum_grad: int, optional
     clip_grad_value: float, optional
     progress: bool, optional
     epoch: int, optional
@@ -74,17 +76,29 @@ def train_epoch(model,
     else:
         generator = dataloader
 
+    batch_count = 0
     for batch_image, batch_label in generator:
         batch_image = batch_image.to(device)
         batch_label = batch_label.to(device)
-        optimizer.zero_grad()
+
         output = model(batch_image)
         loss = criterion(output, batch_label)
         loss.backward()
+
         if clip_grad_value is not None:
             clip_grad_norm_(model.parameters(), clip_grad_value)
-        optimizer.step()
+        if batch_count == accum_grad:
+            optimizer.step()
+            optimizer.zero_grad()
+            batch_count = 0
+        else:
+            batch_count += 1
         metrics.insert('loss', loss.item())
+
+    # handle any left-over gradients waiting to be descended
+    if batch_count != 0:
+        optimizer.step()
+        optimizer.zero_grad()
     return metrics.average()
 
 

@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm10.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm11.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -58,11 +58,11 @@ if __name__ == '__main__':
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'misc', 'public-hpa', 'data2')
     NUM_WORKERS = 3
 
-    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'train.csv'))
-    val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'val.csv'))
+    train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
+    val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))
 
-    # train_idx = train_idx.head(64)
-    # val_idx = val_idx.head(64)
+    train_idx = train_idx.head(64)
+    val_idx = val_idx.head(64)
 
     train_data = RGBYDataset(train_idx, DATA_DIR, EXTERNAL_DATA_DIR, train_transform_fn)
     val_data = RGBYDataset(val_idx, DATA_DIR, EXTERNAL_DATA_DIR, val_transform_fn)
@@ -76,9 +76,6 @@ if __name__ == '__main__':
     DEVICE = 'cuda'
     LR = config['model']['lr']
     MIN_LR = config['model']['min_lr']
-    LR_STEP = config['model']['lr_step']
-    STEP_DELAY = config['model']['step_delay']
-    N_EPOCHS = config['model']['epochs']
     PRETRAINED_PATH = config['pretrained_path']
 
     densenet_model = DensenetClass(in_channels=N_CHANNELS, dropout=True)
@@ -111,6 +108,11 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Train the model
     # -------------------------------------------------------------------------------------------
+    LR_STEP = config['model']['lr_step']
+    STEP_DELAY = config['model']['step_delay']
+    N_EPOCHS = config['model']['epochs']
+    ACCUM_GRAD = config['model']['accum_grad']
+
     LOGGER_PATH = config['logger_path']
     CHECKPOINT_DIR = config['checkpoint_dir']
     create_folder(os.path.dirname(LOGGER_PATH))
@@ -147,6 +149,7 @@ if __name__ == '__main__':
                                  criterion=criterion,
                                  optimizer=optimizer,
                                  device=DEVICE,
+                                 accum_grad=ACCUM_GRAD,
                                  clip_grad_value=1,
                                  progress=True,
                                  epoch=epoch,
