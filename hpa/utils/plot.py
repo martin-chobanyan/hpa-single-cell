@@ -6,7 +6,7 @@ from PIL import Image
 from ..data.transforms import ToBinaryCellSegmentation
 
 
-def plot_example(cell_img, green_img, seg, figsize=(18, 6)):
+def plot_example(cell_img, green_img, seg=None, figsize=(18, 6)):
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize)
     ax1.imshow(cell_img)
     ax1.set_title('Reference Image')
@@ -16,8 +16,9 @@ def plot_example(cell_img, green_img, seg, figsize=(18, 6)):
     ax2.set_title('Target Proteins')
     ax2.axis('off')
 
-    ax3.imshow(seg)
-    ax3.set_title('Cell Segmentation')
+    if seg is not None:
+        ax3.imshow(seg)
+        ax3.set_title('Cell Segmentation')
     ax3.axis('off')
     plt.show()
 
