@@ -22,6 +22,34 @@ class AdjustableCropCompose(HPACompose):
         self.crop_transform.width = shape[1]
 
 
+class ChannelSpecificAug(A.ImageOnlyTransform):
+    def __init__(self, aug, channels, p=0.5):
+        super().__init__(p=p)
+        self.aug = aug
+        if isinstance(channels, int):
+            self.channels = [channels]
+        else:
+            self.channels = channels
+        self.channel_idx_map = {c: i for i, c in enumerate(self.channels)}
+
+    def apply(self, img, **params):
+        img_aug = self.aug(image=img[..., self.channels])['image']
+        new_channels = []
+        for i in range(img.shape[-1]):
+            if i in self.channels:
+                j = self.channel_idx_map[i]
+                new_channels.append(img_aug[..., j])
+            else:
+                new_channels.append(img[..., i])
+        return np.dstack(new_channels)
+
+    def get_params_dependent_on_targets(self, params):
+        return ()
+
+    def get_transform_init_args_names(self):
+        return ()
+
+
 class RandomCropCycle(A.RandomCrop):
     def __init__(self, min_dim, max_dim, cycle_size, dual=False):
         # initialize the size using the maximum dimensions

@@ -10,7 +10,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from hpa.data import RGBYDataset, N_CHANNELS, CHANNEL_MEANS, CHANNEL_STDS
-from hpa.data.transforms import HPACompose
+from hpa.data.transforms import ChannelSpecificAug, HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
 from hpa.model.layers import ConvBlock
 from hpa.model.localizers import PeakResponseLocalizer
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm11.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm13.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -35,11 +35,16 @@ if __name__ == '__main__':
     CROP_SIZE = config['data']['crop']
     BATCH_SIZE = config['data']['batch_size']
 
+    ref_color_aug = A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2), p=1.0)
+    tgt_color_aug = A.RandomBrightnessContrast(brightness_limit=(-0.1, 0.3), contrast_limit=(-0.1, 0.3), p=1.0)
+
     train_transform_fn = HPACompose([
         A.Resize(IMG_DIM, IMG_DIM),
         A.Flip(p=0.5),
         A.ShiftScaleRotate(p=0.5),
         A.RandomCrop(height=CROP_SIZE, width=CROP_SIZE),
+        ChannelSpecificAug(aug=ref_color_aug, channels=[0, 3, 2], p=0.5),
+        ChannelSpecificAug(aug=tgt_color_aug, channels=[1], p=0.5),
         A.Normalize(mean=CHANNEL_MEANS, std=CHANNEL_STDS, max_pixel_value=255),
         ToTensorV2()
     ])
@@ -61,8 +66,8 @@ if __name__ == '__main__':
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))
 
-    train_idx = train_idx.head(64)
-    val_idx = val_idx.head(64)
+    # train_idx = train_idx.head(64)
+    # val_idx = val_idx.head(64)
 
     train_data = RGBYDataset(train_idx, DATA_DIR, EXTERNAL_DATA_DIR, train_transform_fn)
     val_data = RGBYDataset(val_idx, DATA_DIR, EXTERNAL_DATA_DIR, val_transform_fn)
