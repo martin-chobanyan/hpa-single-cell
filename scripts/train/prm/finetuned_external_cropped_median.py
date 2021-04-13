@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm13.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm12.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -35,16 +35,16 @@ if __name__ == '__main__':
     CROP_SIZE = config['data']['crop']
     BATCH_SIZE = config['data']['batch_size']
 
-    ref_color_aug = A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2), p=1.0)
-    tgt_color_aug = A.RandomBrightnessContrast(brightness_limit=(-0.1, 0.3), contrast_limit=(-0.1, 0.3), p=1.0)
+    # ref_color_aug = A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2), p=1.0)
+    # tgt_color_aug = A.RandomBrightnessContrast(brightness_limit=(-0.1, 0.3), contrast_limit=(-0.1, 0.3), p=1.0)
 
     train_transform_fn = HPACompose([
         A.Resize(IMG_DIM, IMG_DIM),
         A.Flip(p=0.5),
         A.ShiftScaleRotate(p=0.5),
         A.RandomCrop(height=CROP_SIZE, width=CROP_SIZE),
-        ChannelSpecificAug(aug=ref_color_aug, channels=[0, 3, 2], p=0.5),
-        ChannelSpecificAug(aug=tgt_color_aug, channels=[1], p=0.5),
+        # ChannelSpecificAug(aug=ref_color_aug, channels=[0, 3, 2], p=0.5),
+        # ChannelSpecificAug(aug=tgt_color_aug, channels=[1], p=0.5),
         A.Normalize(mean=CHANNEL_MEANS, std=CHANNEL_STDS, max_pixel_value=255),
         ToTensorV2()
     ])
