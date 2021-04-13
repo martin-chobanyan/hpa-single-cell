@@ -5,11 +5,9 @@ class ConvBlock(Module):
     def __init__(self, in_channels, out_channels, kernel_size, bnorm=True, relu=True, bias=True):
         super().__init__()
         self.conv = Conv2d(in_channels, out_channels, kernel_size, bias=bias, padding=int(kernel_size/2))
-
         self.bnorm = None
         if bnorm:
             self.bnorm = BatchNorm2d(out_channels)
-
         self.relu = None
         if relu:
             self.relu = ReLU()

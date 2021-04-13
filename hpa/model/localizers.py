@@ -1,7 +1,7 @@
 """Neural networks for localization"""
 import torch
 import torch.nn.functional as F
-from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
+from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, AvgPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
                       Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample)
 
 from .layers import ConvBlock
@@ -259,11 +259,59 @@ class PeakResponseLocalizer(Module):
 
 class Densenet121Pyramid(Module):
     def __init__(self, densenet_model):
+        """Initialization
+
+        Parameters
+        ----------
+        densenet_model: hpa.model.bestfitting.densenet.DensenetClass
+        """
         super().__init__()
 
+        # first conv
+        self.conv1 = densenet_model.conv1[0]
+        self.bn1 = densenet_model.conv1[1]
+        self.relu1 = densenet_model.conv1[2]
+        self.maxpool1 = densenet_model.conv1[3]
 
+        # encoder 2, 3, 4
+        self.encoder2 = densenet_model.encoder2
+        self.encoder3 = densenet_model.encoder3
+        self.encoder4 = densenet_model.encoder4
+
+        # encoder 5
+        self.encoder5 = Sequential(densenet_model.encoder5[0], densenet_model.encoder5[1])
+
+        # spatial transformations
+        self.avg_pool1 = AvgPool2d(8)
+        self.avg_pool2 = AvgPool2d(4)
+        self.avg_pool3 = AvgPool2d(2)
+        self.upsample5 = Upsample(scale_factor=2, mode='nearest')
+
+    # concat features should be linear / conv
     def forward(self, x):
-        return
+        # first layer of pyramid
+        conv_features1 = self.conv1(x)
+        features1 = self.bn1(conv_features1)
+        features1 = self.relu1(features1)
+        features1 = self.maxpool1(features1)
+
+        # 2nd, 3rd, and 4th layers of the pyramid
+        conv_features2 = self.encoder2(features1)
+        conv_features3 = self.encoder3(conv_features2)
+        conv_features4 = self.encoder4(conv_features3)
+
+        # final layer of the pyramid
+        conv_features5 = self.encoder5(conv_features4)
+
+        # spatially transform the pyramid features so they are the same shape
+        pyramid = torch.cat([
+            self.avg_pool1(conv_features1),
+            self.avg_pool2(conv_features2),
+            self.avg_pool3(conv_features3),
+            conv_features4,
+            self.upsample5(conv_features5)
+        ], dim=1)
+        return pyramid
 
 
 class PuzzleCAM(PooledLocalizer):
