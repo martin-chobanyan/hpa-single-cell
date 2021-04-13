@@ -257,6 +257,15 @@ class PeakResponseLocalizer(Module):
         return class_logits
 
 
+class Densenet121Pyramid(Module):
+    def __init__(self, densenet_model):
+        super().__init__()
+
+
+    def forward(self, x):
+        return
+
+
 class PuzzleCAM(PooledLocalizer):
     def __init__(self, cnn, pool='max', return_maps=True, tile_size=(2, 2)):
         super().__init__(cnn, pool, return_maps)
