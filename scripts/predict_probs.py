@@ -38,6 +38,7 @@ if __name__ == '__main__':
 
     DEVICE = 'cuda'
     IMG_DIR = '/home/mchobanyan/data/kaggle/hpa-single-cell/train/'
+    IMG_DIR2 = '/home/mchobanyan/data/kaggle/hpa-single-cell/misc/public-hpa/data2'
     IMG_DIM = 1536
     BATCH_SIZE = 12
 
@@ -66,7 +67,10 @@ if __name__ == '__main__':
         labels = sorted(parse_string_label(labels))
 
         # load and prepare the image
-        channels = load_channels(img_id, IMG_DIR)
+        if src == 'competition':
+            channels = load_channels(img_id, IMG_DIR)
+        else:
+            channels = load_channels(img_id, IMG_DIR2)
         img_full = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
         img_full = img_full.astype(np.float32)
         img_reduced = resize(img_full, (IMG_DIM, IMG_DIM))
@@ -112,3 +116,4 @@ if __name__ == '__main__':
         metrics_df[f'label{label_id}'] = probs
 
     metrics_df.to_csv(OUTPUT_PATH, sep='\t', index=False)
+    print('Done!')
