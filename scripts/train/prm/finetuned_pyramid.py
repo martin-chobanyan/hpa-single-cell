@@ -13,7 +13,7 @@ from hpa.data import RGBYDataset, N_CHANNELS, CHANNEL_MEANS, CHANNEL_STDS
 from hpa.data.transforms import ChannelSpecificAug, HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
 from hpa.model.layers import ConvBlock
-from hpa.model.localizers import PeakResponseLocalizer
+from hpa.model.localizers import Densenet121Pyramid, PeakResponseLocalizer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
 from hpa.utils.train import checkpoint, Logger, train_epoch, test_epoch
@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm13.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm14.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -35,22 +35,18 @@ if __name__ == '__main__':
     CROP_SIZE = config['data']['crop']
     BATCH_SIZE = config['data']['batch_size']
 
-    # ref_color_aug = A.RandomBrightnessContrast(brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2), p=1.0)
-    # tgt_color_aug = A.RandomBrightnessContrast(brightness_limit=(-0.1, 0.3), contrast_limit=(-0.1, 0.3), p=1.0)
-
     train_transform_fn = HPACompose([
         A.Resize(IMG_DIM, IMG_DIM),
         A.Flip(p=0.5),
         A.ShiftScaleRotate(p=0.5),
         A.RandomCrop(height=CROP_SIZE, width=CROP_SIZE),
-        # ChannelSpecificAug(aug=ref_color_aug, channels=[0, 3, 2], p=0.5),
-        # ChannelSpecificAug(aug=tgt_color_aug, channels=[1], p=0.5),
         A.Normalize(mean=CHANNEL_MEANS, std=CHANNEL_STDS, max_pixel_value=255),
         ToTensorV2()
     ])
 
     val_transform_fn = HPACompose([
         A.Resize(IMG_DIM, IMG_DIM),
+        # A.CenterCrop(CROP_SIZE, CROP_SIZE),
         A.Normalize(mean=CHANNEL_MEANS, std=CHANNEL_STDS, max_pixel_value=255),
         ToTensorV2()
     ])
@@ -61,7 +57,7 @@ if __name__ == '__main__':
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'misc', 'public-hpa', 'data2')
-    NUM_WORKERS = 3
+    NUM_WORKERS = 8
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))
@@ -80,7 +76,6 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     DEVICE = 'cuda'
     LR = config['model']['lr']
-    MIN_LR = config['model']['min_lr']
     PRETRAINED_PATH = config['pretrained_path']
 
     densenet_model = DensenetClass(in_channels=N_CHANNELS, dropout=True)
@@ -91,21 +86,16 @@ if __name__ == '__main__':
         pretrained_state_dict = torch.load(PRETRAINED_PATH)['state_dict']
         densenet_model.load_state_dict(pretrained_state_dict)
 
-    densenet_encoder = Sequential(densenet_model.conv1,
-                                  densenet_model.encoder2,
-                                  densenet_model.encoder3,
-                                  densenet_model.encoder4,
-                                  densenet_model.encoder5,
-                                  ReLU())
+    pyramid_nn = Densenet121Pyramid(densenet_model)
+    for param in pyramid_nn.parameters():
+        param.requires_grad = False
 
-    backbone_cnn = Sequential(densenet_encoder, ConvBlock(1024, 1024, kernel_size=3), Conv2d(1024, 18, 1))
-
+    backbone_cnn = Sequential(pyramid_nn, ConvBlock(2880, 1024, kernel_size=3), Conv2d(1024, 18, 1))
     model = PeakResponseLocalizer(cnn=backbone_cnn, return_maps=False, return_peaks=False)
     model = model.to(DEVICE)
 
     criterion = FocalSymmetricLovaszHardLogLoss()
     optimizer = AdamW([
-        {'params': model.cnn[0].parameters(), 'lr': MIN_LR},
         {'params': model.cnn[1].parameters(), 'lr': LR},
         {'params': model.cnn[2].parameters(), 'lr': LR}
     ])
@@ -113,10 +103,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Train the model
     # -------------------------------------------------------------------------------------------
-    LR_STEP = config['model']['lr_step']
-    STEP_DELAY = config['model']['step_delay']
     N_EPOCHS = config['model']['epochs']
-    ACCUM_GRAD = config['model']['accum_grad']
 
     LOGGER_PATH = config['logger_path']
     CHECKPOINT_DIR = config['checkpoint_dir']
@@ -140,21 +127,11 @@ if __name__ == '__main__':
     best_loss = float('inf')
     for epoch in range(N_EPOCHS):
 
-        if epoch >= STEP_DELAY:
-            LR = max(LR - LR_STEP, MIN_LR)
-            print(f'Lowering learning rate: {LR}')
-            optimizer = AdamW([
-                {'params': model.cnn[0].parameters(), 'lr': MIN_LR},
-                {'params': model.cnn[1].parameters(), 'lr': LR},
-                {'params': model.cnn[2].parameters(), 'lr': LR}
-            ])
-
         train_loss = train_epoch(model=model,
                                  dataloader=train_loader,
                                  criterion=criterion,
                                  optimizer=optimizer,
                                  device=DEVICE,
-                                 accum_grad=ACCUM_GRAD,
                                  clip_grad_value=1,
                                  progress=True,
                                  epoch=epoch,
