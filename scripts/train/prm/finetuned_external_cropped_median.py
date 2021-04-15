@@ -24,7 +24,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm12.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm15.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -51,6 +51,7 @@ if __name__ == '__main__':
 
     val_transform_fn = HPACompose([
         A.Resize(IMG_DIM, IMG_DIM),
+        A.CenterCrop(height=CROP_SIZE, width=CROP_SIZE),
         A.Normalize(mean=CHANNEL_MEANS, std=CHANNEL_STDS, max_pixel_value=255),
         ToTensorV2()
     ])
@@ -61,7 +62,7 @@ if __name__ == '__main__':
     ROOT_DIR = config['data']['root_dir']
     DATA_DIR = os.path.join(ROOT_DIR, 'train')
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'misc', 'public-hpa', 'data2')
-    NUM_WORKERS = 3
+    NUM_WORKERS = 6
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))
@@ -80,7 +81,6 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     DEVICE = 'cuda'
     LR = config['model']['lr']
-    MIN_LR = config['model']['min_lr']
     PRETRAINED_PATH = config['pretrained_path']
 
     densenet_model = DensenetClass(in_channels=N_CHANNELS, dropout=True)
@@ -98,6 +98,9 @@ if __name__ == '__main__':
                                   densenet_model.encoder5,
                                   ReLU())
 
+    for param in densenet_encoder.parameters():
+        param.requires_grad = False
+
     backbone_cnn = Sequential(densenet_encoder, ConvBlock(1024, 1024, kernel_size=3), Conv2d(1024, 18, 1))
 
     model = PeakResponseLocalizer(cnn=backbone_cnn, return_maps=False, return_peaks=False)
@@ -105,7 +108,6 @@ if __name__ == '__main__':
 
     criterion = FocalSymmetricLovaszHardLogLoss()
     optimizer = AdamW([
-        {'params': model.cnn[0].parameters(), 'lr': MIN_LR},
         {'params': model.cnn[1].parameters(), 'lr': LR},
         {'params': model.cnn[2].parameters(), 'lr': LR}
     ])
@@ -113,16 +115,12 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Train the model
     # -------------------------------------------------------------------------------------------
-    LR_STEP = config['model']['lr_step']
-    STEP_DELAY = config['model']['step_delay']
-    N_EPOCHS = config['model']['epochs']
-    ACCUM_GRAD = config['model']['accum_grad']
-
     LOGGER_PATH = config['logger_path']
     CHECKPOINT_DIR = config['checkpoint_dir']
     create_folder(os.path.dirname(LOGGER_PATH))
     create_folder(os.path.dirname(CHECKPOINT_DIR))
 
+    N_EPOCHS = config['model']['epochs']
     N_TRAIN_BATCHES = int(len(train_data) / BATCH_SIZE)
     N_VAL_BATCHES = int(len(val_data) / BATCH_SIZE)
 
@@ -140,21 +138,11 @@ if __name__ == '__main__':
     best_loss = float('inf')
     for epoch in range(N_EPOCHS):
 
-        if epoch >= STEP_DELAY:
-            LR = max(LR - LR_STEP, MIN_LR)
-            print(f'Lowering learning rate: {LR}')
-            optimizer = AdamW([
-                {'params': model.cnn[0].parameters(), 'lr': MIN_LR},
-                {'params': model.cnn[1].parameters(), 'lr': LR},
-                {'params': model.cnn[2].parameters(), 'lr': LR}
-            ])
-
         train_loss = train_epoch(model=model,
                                  dataloader=train_loader,
                                  criterion=criterion,
                                  optimizer=optimizer,
                                  device=DEVICE,
-                                 accum_grad=ACCUM_GRAD,
                                  clip_grad_value=1,
                                  progress=True,
                                  epoch=epoch,
