@@ -30,3 +30,10 @@ def get_cell_masks(cell_seg):
         cell_mask = (cell_seg == cell_id)
         cell_masks.append(cell_mask)
     return cell_masks
+
+
+def remove_empty_masks(masks):
+    num_masks = len(masks)
+    max_per_mask = masks.reshape((num_masks, -1)).max(axis=-1)
+    keep_mask = max_per_mask > 0
+    return masks[keep_mask]

@@ -1,12 +1,15 @@
 import os
 
+import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from cv2 import INTER_NEAREST
 from PIL import Image, ImageFile
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
 from .misc import parse_string_label
+from .transforms import ToCellMasks
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 N_CHANNELS = 4
@@ -136,6 +139,77 @@ class CroppedRGBYDataset(RGBYDataset):
 
     def set_crop_size(self, size):
         self.transforms.set_crop_size((size, size))
+
+
+# TODO: change this when the resized images and segmentations are created
+class RGBYWithCellMasks(BaseDataset):
+    def __init__(self,
+                 data_idx,
+                 data_dir,
+                 seg_dir,
+                 external_data_dir=None,
+                 external_seg_dir=None,
+                 dual_transforms=None,
+                 img_transforms=None,
+                 img_dim=1536,
+                 downsize_scale=32,
+                 tensorize=True):
+        super().__init__(data_idx, data_dir, external_data_dir)
+        self.seg_dir = seg_dir
+        self.external_seg_dir = external_seg_dir
+
+        self.dual_transforms = dual_transforms
+        self.img_transforms = img_transforms
+
+        self.img_dim = img_dim
+        self.downsize_scale = downsize_scale
+        self.feature_map_dim = int(img_dim / downsize_scale)
+        self.seg_transforms = A.Compose([
+            A.Resize(height=self.feature_map_dim, width=self.feature_map_dim, interpolation=INTER_NEAREST),
+            ToCellMasks()
+        ])
+
+        if tensorize:
+            self.tensorize = ToTensorV2()
+        else:
+            self.tensorize = None
+
+    def __getitem__(self, item):
+        img_id, channels, label_vec = super().__getitem__(item)
+
+        # stack the channels as RGBY
+        img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
+
+        if (self.external_seg_dir is not None) and (self.data_idx.at[item, 'Source'] == 'external'):
+            seg_dir = self.external_seg_dir
+        else:
+            seg_dir = self.seg_dir
+
+        # load the segmentation map
+        seg = np.load(os.path.join(seg_dir, f'{img_id}.npz'))['arr_0']
+
+        if self.dual_transforms is not None:
+            aug_result = self.dual_transforms(image=img, mask=seg)
+            img = aug_result['image']
+            seg = aug_result['mask']
+
+        if self.img_transforms is not None:
+            img = self.img_transforms(image=img)['image']
+
+        cell_masks = self.seg_transforms(image=seg)['image']
+
+        # convert the data types to floats for all channels
+        if isinstance(img, np.ndarray):
+            img = img.astype(np.float32)
+            seg = seg.astype(np.float32)
+        elif isinstance(img, torch.Tensor):
+            img = img.float()
+            seg = seg.float()
+
+        if self.tensorize is not None:
+            img = self.tensorize(image=img)['image']
+            seg = self.tensorize(image=seg)['image']
+        return img, seg, label_vec
 
 
 class RGBYWithSegmentation(BaseDataset):
