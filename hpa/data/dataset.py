@@ -2,13 +2,13 @@ import os
 
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-from cv2 import INTER_NEAREST
+from cv2 import INTER_LINEAR, INTER_NEAREST
 from PIL import Image, ImageFile
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .misc import parse_string_label
+from .misc import parse_string_label, remove_empty_masks
 from .transforms import ToCellMasks
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -151,6 +151,7 @@ class RGBYWithCellMasks(BaseDataset):
                  external_seg_dir=None,
                  dual_transforms=None,
                  img_transforms=None,
+                 resize=True,
                  img_dim=1536,
                  downsize_scale=32,
                  tensorize=True):
@@ -162,6 +163,13 @@ class RGBYWithCellMasks(BaseDataset):
         self.img_transforms = img_transforms
 
         self.img_dim = img_dim
+        if resize:
+            self.resize_img = A.Resize(height=img_dim, width=img_dim, interpolation=INTER_LINEAR)
+            self.resize_seg = A.Resize(height=img_dim, width=img_dim, interpolation=INTER_NEAREST)
+        else:
+            self.resize_img = None
+            self.resize_seg = None
+
         self.downsize_scale = downsize_scale
         self.feature_map_dim = int(img_dim / downsize_scale)
         self.seg_transforms = A.Compose([
@@ -180,36 +188,42 @@ class RGBYWithCellMasks(BaseDataset):
         # stack the channels as RGBY
         img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
 
+        # load the segmentation map
         if (self.external_seg_dir is not None) and (self.data_idx.at[item, 'Source'] == 'external'):
             seg_dir = self.external_seg_dir
         else:
             seg_dir = self.seg_dir
-
-        # load the segmentation map
         seg = np.load(os.path.join(seg_dir, f'{img_id}.npz'))['arr_0']
 
+        # resize the image and segmentation if requested
+        if self.resize_img is not None:
+            img = self.resize_img(image=img)['image']
+        if self.resize_seg is not None:
+            seg = self.resize_seg(image=seg)['image']
+
+        # transform both image and seg simultaneously
         if self.dual_transforms is not None:
             aug_result = self.dual_transforms(image=img, mask=seg)
             img = aug_result['image']
             seg = aug_result['mask']
 
+        # only image transform
         if self.img_transforms is not None:
             img = self.img_transforms(image=img)['image']
 
+        # get the individual cell masks and their count
         cell_masks = self.seg_transforms(image=seg)['image']
+        cell_masks = remove_empty_masks(cell_masks)
+        num_cells = len(cell_masks)
 
-        # convert the data types to floats for all channels
+        # convert the image to a float
         if isinstance(img, np.ndarray):
             img = img.astype(np.float32)
-            seg = seg.astype(np.float32)
-        elif isinstance(img, torch.Tensor):
-            img = img.float()
-            seg = seg.float()
 
         if self.tensorize is not None:
             img = self.tensorize(image=img)['image']
-            seg = self.tensorize(image=seg)['image']
-        return img, seg, label_vec
+            cell_masks = torch.from_numpy(cell_masks)
+        return img, cell_masks, num_cells, label_vec
 
 
 class RGBYWithSegmentation(BaseDataset):

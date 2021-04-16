@@ -4,7 +4,9 @@ from itertools import cycle
 from random import randint
 
 import numpy as np
+import torch
 from torch.utils.data import BatchSampler, SequentialSampler, RandomSampler
+from torch.utils.data.dataloader import default_collate
 
 from .misc import get_single_label_subset
 from .dataset import N_CLASSES
@@ -109,3 +111,21 @@ class CropDataSampler(BatchSampler):
                 self.set_random_crop_size()
         if len(batch) > 0 and not self.drop_last:
             yield batch
+
+
+def cell_mask_collate(batch):
+    """Collate a batch containing a list of tuples with the (image, cell masks, cell count, and label vector)
+
+    Parameters
+    ----------
+    batch: list[tuple]
+
+    Returns
+    -------
+    tuple[torch.Tensor]
+    """
+    images, cell_masks, cell_counts, label_vectors = list(zip(*batch))
+    batch_img, batch_cell_counts, batch_label = default_collate(list(zip(images, cell_counts, label_vectors)))
+    batch_cell_masks = np.concatenate(cell_masks, axis=0)
+    batch_cell_masks = torch.as_tensor(batch_cell_masks)
+    return batch_img, batch_cell_masks, batch_cell_counts, batch_label
