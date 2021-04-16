@@ -1,6 +1,8 @@
 import albumentations as A
 import numpy as np
 
+from .misc import get_cell_masks
+
 
 class HPACompose(A.Compose):
     def __init__(self, transforms, *args, **kwargs):
@@ -89,6 +91,28 @@ class ToBinaryCellSegmentation(A.ImageOnlyTransform):
         img = ~(img == 0)
         img = img.astype(self.dtype)
         return img
+
+    @property
+    def targets(self):
+        return {"image": self.apply}
+
+    def get_params_dependent_on_targets(self, params):
+        return ()
+
+    def get_transform_init_args_names(self):
+        return ()
+
+
+class ToCellMasks(A.ImageOnlyTransform):
+    """Isolate and stack each individual cell mask from a cell segmentation image"""
+
+    def __init__(self):
+        super().__init__(p=1.0)
+
+    def apply(self, img, **params):
+        # get the cell masks and stack them
+        cell_masks = get_cell_masks(img)
+        return np.stack(cell_masks)
 
     @property
     def targets(self):
