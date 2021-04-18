@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, AvgPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
                       Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample)
 
-from .layers import ConvBlock
+from .layers import ConvBlock, LogSumExp
 from .prm import median_filter, peak_stimulation
 from ..utils.model import get_num_output_features, merge_tiles, tile_image_batch
 
@@ -258,15 +258,39 @@ class PeakResponseLocalizer(Module):
 
 
 class RoILocalizer(Module):
-    def __init__(self, backbone, final_conv):
+    def __init__(self, backbone, final_conv, class_roi):
         super().__init__()
         self.backbone = backbone
         self.final_conv = final_conv
+        self.class_roi = class_roi
+        self.class_lse = LogSumExp(dim=0, keepdim=True)
 
     def forward(self, cell_img, cell_masks, cell_counts, return_maps=False):
         feature_maps = self.backbone(cell_img)
+
+        # shape: (num_total_cells, num_classes, height, width)
+        # where num_total_cells = number of total cells across all images in the batch
         class_maps = self.final_conv(feature_maps)
-        return
+
+        # pass the class activation maps through the RoI Pool layer
+        # shape: (num_total_cells, num_classes)
+        cell_logits = self.class_roi(class_maps, cell_masks, cell_counts)
+
+        # isolate the cells within each image in the batch
+        # and condense their scores into a single image-level logit vector
+        # shape: (batch, num_classes)
+        i = 0
+        logits = []
+        for cell_count in cell_counts:
+            img_logits = self.class_lse(cell_logits[i:i+cell_count])
+            logits.append(img_logits)
+            i += cell_count
+        logits = torch.cat(logits, dim=0)
+
+        result = [logits]
+        if return_maps:
+            result.append(class_maps)
+        return result
 
 
 class Densenet121Pyramid(Module):
