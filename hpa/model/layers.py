@@ -22,6 +22,65 @@ class ConvBlock(Module):
         return x
 
 
+class RoIPool(Module):
+    """Cell / Region of Interest Pooling
+
+    Extracts a feature vector for each cell in an image. The feature vector for each cell is calculated
+    by pooling the pixels in the feature map which have been keep after the cell mask filter.
+    """
+
+    def __init__(self, method='max'):
+        super().__init__()
+        if method == 'max':
+            self.pool_fn = self.roi_maxpool
+        elif method == 'avg':
+            self.pool_fn = self.roi_avgpool
+        elif method == 'max_and_avg':
+            self.pool_fn = self.roi_max_and_avg
+        else:
+            raise ValueError(f'Unknown RoI pooling method: {method}')
+
+    @staticmethod
+    def roi_maxpool(x):
+        return x.max(dim=1).values
+
+    @staticmethod
+    def roi_avgpool(x):
+        return x.mean(dim=1)
+
+    def roi_max_and_avg(self, x):
+        x_max = self.roi_maxpool(x)
+        x_avg = self.roi_avgpool(x)
+        return torch.cat([x_max, x_avg])
+
+    def forward(self, feature_maps, cell_masks, cell_counts):
+        """Forward call
+
+        Parameters
+        ----------
+        feature_maps: torch.Tensor
+            CNN feature maps with shape (batch, num_features, height, width)
+        cell_masks: torch.Tensor
+            Boolean mask for each cell with shape (batch * cell_per_batch, height, width)
+        cell_counts: torch.Tensor
+            Sequence of cell counts per image in the batch. Has shape (batch,)
+
+        Returns
+        -------
+        torch.Tensor
+            A tensor with shape (batch * cell_per_batch, num_features) where each row is a feature vector for a cell.
+        """
+        i = 0
+        cell_vectors = []
+        for batch_idx, cell_count in enumerate(cell_counts):
+            for cell_mask in cell_masks[i:i+cell_count]:
+                roi = feature_maps[batch_idx, :, cell_mask]
+                feature_vec = self.pool_fn(roi)
+                cell_vectors.append(feature_vec)
+            i += cell_count
+        return torch.stack(cell_vectors)
+
+
 class LogSumExp(Module):
     """Log-Sum-Exponential averaging layer for 2D matrices(interpolates between maximum and average)"""
 

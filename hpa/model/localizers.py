@@ -257,6 +257,18 @@ class PeakResponseLocalizer(Module):
         return class_logits
 
 
+class RoILocalizer(Module):
+    def __init__(self, backbone, final_conv):
+        super().__init__()
+        self.backbone = backbone
+        self.final_conv = final_conv
+
+    def forward(self, cell_img, cell_masks, cell_counts, return_maps=False):
+        feature_maps = self.backbone(cell_img)
+        class_maps = self.final_conv(feature_maps)
+        return
+
+
 class Densenet121Pyramid(Module):
     def __init__(self, densenet_model):
         """Initialization
