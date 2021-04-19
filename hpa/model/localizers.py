@@ -266,14 +266,13 @@ class RoILocalizer(Module):
         self.class_lse = LogSumExp(dim=0, keepdim=True)
 
     def forward(self, cell_img, cell_masks, cell_counts, return_maps=False):
+        # shape: (batch, num_classes, height, width)
         feature_maps = self.backbone(cell_img)
-
-        # shape: (num_total_cells, num_classes, height, width)
-        # where num_total_cells = number of total cells across all images in the batch
         class_maps = self.final_conv(feature_maps)
 
         # pass the class activation maps through the RoI Pool layer
         # shape: (num_total_cells, num_classes)
+        # where num_total_cells = number of total cells across all images in the batch
         cell_logits = self.class_roi(class_maps, cell_masks, cell_counts)
 
         # isolate the cells within each image in the batch
@@ -290,6 +289,8 @@ class RoILocalizer(Module):
         result = [logits]
         if return_maps:
             result.append(class_maps)
+        if len(result) == 1:
+            return result[0]
         return result
 
 
