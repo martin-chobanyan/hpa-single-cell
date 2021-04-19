@@ -112,7 +112,10 @@ class ToCellMasks(A.ImageOnlyTransform):
     def apply(self, img, **params):
         # get the cell masks and stack them
         cell_masks = get_cell_masks(img)
-        return np.stack(cell_masks)
+        try:
+            return np.stack(cell_masks)
+        except ValueError:
+            return None
 
     @property
     def targets(self):

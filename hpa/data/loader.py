@@ -124,8 +124,20 @@ def cell_mask_collate(batch):
     -------
     tuple[torch.Tensor]
     """
+    # isolate each component in the batch
     images, cell_masks, cell_counts, label_vectors = list(zip(*batch))
+
+    # apply default collate function to the images, cell counts per image, and label vectors
     batch_img, batch_cell_counts, batch_label = default_collate(list(zip(images, cell_counts, label_vectors)))
-    batch_cell_masks = np.concatenate(cell_masks, axis=0)
-    batch_cell_masks = torch.as_tensor(batch_cell_masks)
+
+    # concatenate the non-null cell masks along the mask (first) dimension
+    batch_cell_masks = []
+    for mask in cell_masks:
+        if mask is not None:
+            batch_cell_masks.append(mask)
+    try:
+        batch_cell_masks = np.concatenate(batch_cell_masks, axis=0)
+        batch_cell_masks = torch.as_tensor(batch_cell_masks)
+    except ValueError:
+        batch_cell_masks = torch.zeros((0, 0, 0))
     return batch_img, batch_cell_masks, batch_cell_counts, batch_label

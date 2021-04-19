@@ -265,6 +265,10 @@ class RoILocalizer(Module):
         self.class_roi = class_roi
         self.class_lse = LogSumExp(dim=0, keepdim=True)
 
+        # fallback method
+        self.maxpool = AdaptiveMaxPool2d((1, 1))
+        self.flatten = Flatten()
+
     def forward(self, cell_img, cell_masks, cell_counts, return_maps=False):
         # shape: (batch, num_classes, height, width)
         feature_maps = self.backbone(cell_img)
@@ -281,7 +285,13 @@ class RoILocalizer(Module):
         i = 0
         logits = []
         for cell_count in cell_counts:
-            img_logits = self.class_lse(cell_logits[i:i+cell_count])
+            if cell_count != 0:
+                img_logits = self.class_lse(cell_logits[i:i+cell_count])
+            else:
+                # simply take the maxpool of the class activation maps
+                # if no cell segmentations exist for this image in the batch
+                print('uh oh... no cell segmentation')
+                img_logits = self.flatten(self.maxpool(class_maps))
             logits.append(img_logits)
             i += cell_count
         logits = torch.cat(logits, dim=0)

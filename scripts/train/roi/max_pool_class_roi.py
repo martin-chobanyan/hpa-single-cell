@@ -19,7 +19,7 @@ from hpa.utils import create_folder
 from hpa.utils.train import checkpoint, Logger, train_roi_epoch, test_roi_epoch
 
 if __name__ == '__main__':
-    print('Training a weakly-supervised PRM localizer with pretrained encoder')
+    print('Training a weakly-supervised RoI localizer with pretrained encoder')
 
     # -------------------------------------------------------------------------------------------
     # Read in the config
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     SEG_DIR = os.path.join(ROOT_DIR, 'segmentation', 'competition_1536x1536')
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'images', 'public_1536x1536')
     EXTERNAL_SEG_DIR = os.path.join(ROOT_DIR, 'segmentation', 'public_1536x1536')
-    NUM_WORKERS = 6
+    NUM_WORKERS = 10
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))

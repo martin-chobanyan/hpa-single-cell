@@ -198,8 +198,11 @@ class RGBYWithCellMasks(BaseDataset):
 
         # get the individual cell masks and their count
         cell_masks = self.seg_transforms(image=seg)['image']
-        cell_masks = remove_empty_masks(cell_masks)
-        num_cells = len(cell_masks)
+        if cell_masks is not None:
+            cell_masks = remove_empty_masks(cell_masks)
+            num_cells = len(cell_masks)
+        else:
+            num_cells = 0
 
         # convert the image to a float
         if isinstance(img, np.ndarray):
