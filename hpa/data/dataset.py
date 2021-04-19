@@ -141,7 +141,6 @@ class CroppedRGBYDataset(RGBYDataset):
         self.transforms.set_crop_size((size, size))
 
 
-# TODO: change this when the resized images and segmentations are created
 class RGBYWithCellMasks(BaseDataset):
     def __init__(self,
                  data_idx,
@@ -151,7 +150,6 @@ class RGBYWithCellMasks(BaseDataset):
                  external_seg_dir=None,
                  dual_transforms=None,
                  img_transforms=None,
-                 resize=True,
                  img_dim=1536,
                  downsize_scale=32,
                  tensorize=True):
@@ -163,13 +161,6 @@ class RGBYWithCellMasks(BaseDataset):
         self.img_transforms = img_transforms
 
         self.img_dim = img_dim
-        if resize:
-            self.resize_img = A.Resize(height=img_dim, width=img_dim, interpolation=INTER_LINEAR)
-            self.resize_seg = A.Resize(height=img_dim, width=img_dim, interpolation=INTER_NEAREST)
-        else:
-            self.resize_img = None
-            self.resize_seg = None
-
         self.downsize_scale = downsize_scale
         self.feature_map_dim = int(img_dim / downsize_scale)
         self.seg_transforms = A.Compose([
@@ -194,12 +185,6 @@ class RGBYWithCellMasks(BaseDataset):
         else:
             seg_dir = self.seg_dir
         seg = np.load(os.path.join(seg_dir, f'{img_id}.npz'))['arr_0']
-
-        # resize the image and segmentation if requested
-        if self.resize_img is not None:
-            img = self.resize_img(image=img)['image']
-        if self.resize_seg is not None:
-            seg = self.resize_seg(image=seg)['image']
 
         # transform both image and seg simultaneously
         if self.dual_transforms is not None:
