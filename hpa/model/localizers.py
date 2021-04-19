@@ -284,14 +284,14 @@ class RoILocalizer(Module):
         # shape: (batch, num_classes)
         i = 0
         logits = []
-        for cell_count in cell_counts:
+        for batch_idx, cell_count in enumerate(cell_counts):
             if cell_count != 0:
                 img_logits = self.class_lse(cell_logits[i:i+cell_count])
             else:
                 # simply take the maxpool of the class activation maps
                 # if no cell segmentations exist for this image in the batch
                 print('uh oh... no cell segmentation')
-                img_logits = self.flatten(self.maxpool(class_maps))
+                img_logits = self.flatten(self.maxpool(class_maps[[batch_idx]]))
             logits.append(img_logits)
             i += cell_count
         logits = torch.cat(logits, dim=0)

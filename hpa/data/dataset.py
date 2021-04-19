@@ -58,7 +58,7 @@ class BaseDataset(Dataset):
             self.data_idx = data_idx
         self.data_dir = data_dir
         self.external_data_dir = external_data_dir
-        self.n_samples = len(data_idx)
+        self.n_samples = len(self.data_idx)
 
     def get_img_id_and_label(self, item):
         return self.data_idx.loc[item, ['ID', 'Label']]
