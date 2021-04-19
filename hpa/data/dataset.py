@@ -51,7 +51,11 @@ class BaseDataset(Dataset):
         data_dir: str
         """
         super().__init__()
-        self.data_idx = data_idx
+        if 'include' in data_idx.columns:
+            self.data_idx = data_idx.loc[data_idx['include']]
+            self.data_idx = self.data_idx.reset_index(drop=True)
+        else:
+            self.data_idx = data_idx
         self.data_dir = data_dir
         self.external_data_dir = external_data_dir
         self.n_samples = len(data_idx)
@@ -210,7 +214,8 @@ class RGBYWithCellMasks(BaseDataset):
 
         if self.tensorize is not None:
             img = self.tensorize(image=img)['image']
-            cell_masks = torch.from_numpy(cell_masks)
+            if cell_masks is not None:
+                cell_masks = torch.from_numpy(cell_masks)
         return img, cell_masks, num_cells, label_vec
 
 

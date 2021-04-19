@@ -55,7 +55,7 @@ if __name__ == '__main__':
     SEG_DIR = os.path.join(ROOT_DIR, 'segmentation', 'competition_1536x1536')
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'images', 'public_1536x1536')
     EXTERNAL_SEG_DIR = os.path.join(ROOT_DIR, 'segmentation', 'public_1536x1536')
-    NUM_WORKERS = 10
+    NUM_WORKERS = 4
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))

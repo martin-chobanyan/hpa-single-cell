@@ -5,3 +5,9 @@ To install the baseline cell segmentation model, run the following:
 ```
 pip install https://github.com/CellProfiling/HPA-Cell-Segmentation/archive/master.zip
 ```
+
+### Execution Order
+- download public dataset
+- exclude images
+- multilabel stratify split
+- train
