@@ -177,6 +177,13 @@ class RGBYWithCellMasks(BaseDataset):
         else:
             self.tensorize = None
 
+    def load_seg(self, idx, img_id):
+        if (self.external_seg_dir is not None) and (self.data_idx.at[idx, 'Source'] == 'external'):
+            seg_dir = self.external_seg_dir
+        else:
+            seg_dir = self.seg_dir
+        return np.load(os.path.join(seg_dir, f'{img_id}.npz'))['arr_0']
+
     def __getitem__(self, item):
         img_id, channels, label_vec = super().__getitem__(item)
 
@@ -184,11 +191,7 @@ class RGBYWithCellMasks(BaseDataset):
         img = np.dstack([channels['red'], channels['green'], channels['blue'], channels['yellow']])
 
         # load the segmentation map
-        if (self.external_seg_dir is not None) and (self.data_idx.at[item, 'Source'] == 'external'):
-            seg_dir = self.external_seg_dir
-        else:
-            seg_dir = self.seg_dir
-        seg = np.load(os.path.join(seg_dir, f'{img_id}.npz'))['arr_0']
+        seg = self.load_seg(item, img_id)
 
         # transform both image and seg simultaneously
         if self.dual_transforms is not None:

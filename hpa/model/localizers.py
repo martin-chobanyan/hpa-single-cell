@@ -269,7 +269,7 @@ class RoILocalizer(Module):
         self.maxpool = AdaptiveMaxPool2d((1, 1))
         self.flatten = Flatten()
 
-    def forward(self, cell_img, cell_masks, cell_counts, return_maps=False):
+    def forward(self, cell_img, cell_masks, cell_counts, return_cells=False, return_maps=False):
         # shape: (batch, num_classes, height, width)
         feature_maps = self.backbone(cell_img)
         class_maps = self.final_conv(feature_maps)
@@ -297,6 +297,8 @@ class RoILocalizer(Module):
         logits = torch.cat(logits, dim=0)
 
         result = [logits]
+        if return_cells:
+            result.append(cell_logits)
         if return_maps:
             result.append(class_maps)
         if len(result) == 1:
