@@ -2,7 +2,7 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, AvgPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
-                      Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample)
+                      Dropout, Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample)
 
 from .layers import ConvBlock, LogSumExp
 from .prm import median_filter, peak_stimulation
@@ -299,6 +299,72 @@ class RoILocalizer(Module):
         result = [logits]
         if return_cells:
             result.append(cell_logits)
+        if return_maps:
+            result.append(class_maps)
+        if len(result) == 1:
+            return result[0]
+        return result
+
+
+class AttnWeightRoILocalizer(Module):
+    def __init__(self, backbone, final_conv, feature_roi, class_roi, cell_feature_dim=2048):
+        super().__init__()
+        self.backbone = backbone
+        self.final_conv = final_conv
+        self.feature_roi = feature_roi
+        self.class_roi = class_roi
+
+        # maps the cell feature vectors to the cell attention weights
+        self.fc_cell_weights = Sequential(Linear(cell_feature_dim, 1024),
+                                          ReLU(),
+                                          Dropout(p=0.5),
+                                          Linear(1024, 18))
+
+        # fallback method
+        self.maxpool = AdaptiveMaxPool2d((1, 1))
+        self.flatten = Flatten()
+
+    def forward(self, cell_img, cell_masks, cell_counts, return_cells=False, return_weights=False, return_maps=False):
+        # shape: (batch, num_classes, height, width)
+        feature_maps = self.backbone(cell_img)
+        class_maps = self.final_conv(feature_maps)
+
+        # pass the feature maps through the RoI Pool layer
+        # shape: (num_total_cells, num_features)
+        # where num_total_cells = number of total cells across all images in the batch
+        cell_features = self.feature_roi(feature_maps, cell_masks, cell_counts)
+        cell_weight_logits = self.fc_cell_weights(cell_features)
+
+        # pass the class activation maps through the RoI Pool layer
+        # shape: (num_total_cells, num_classes)
+        cell_class_logits = self.class_roi(class_maps, cell_masks, cell_counts)
+
+        # isolate the cells within each image in the batch
+        # and condense their scores into a single image-level logit vector
+        # shape: (batch, num_classes)
+        i = 0
+        logits = []
+        for batch_idx, cell_count in enumerate(cell_counts):
+            if cell_count != 0:
+                # isolate the cell weights and cell class logits
+                # and use the weights to aggregate the cell logits into image-level logits
+                attn_weights = F.softmax(cell_weight_logits[i:i+cell_count], dim=0)
+                cell_logits = cell_class_logits[i:i+cell_count]
+                img_logits = (attn_weights * cell_logits).sum(dim=0, keepdim=True)
+            else:
+                # simply take the maxpool of the class activation maps
+                # if no cell segmentations exist for this image in the batch
+                print('uh oh... no cell segmentation')
+                img_logits = self.flatten(self.maxpool(class_maps[[batch_idx]]))
+            logits.append(img_logits)
+            i += cell_count
+        logits = torch.cat(logits, dim=0)
+
+        result = [logits]
+        if return_cells:
+            result.append(cell_class_logits)
+        if return_weights:
+            result.append(cell_weight_logits)
         if return_maps:
             result.append(class_maps)
         if len(result) == 1:
