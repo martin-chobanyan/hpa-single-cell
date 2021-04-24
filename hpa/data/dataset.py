@@ -56,11 +56,15 @@ class BaseDataset(Dataset):
             self.data_idx = self.data_idx.reset_index(drop=True)
         else:
             self.data_idx = data_idx
+        self.no_labels = 'Label' not in data_idx.columns
+
         self.data_dir = data_dir
         self.external_data_dir = external_data_dir
         self.n_samples = len(self.data_idx)
 
     def get_img_id_and_label(self, item):
+        if self.no_labels:
+            return self.data_idx.loc[item, 'ID'], None
         return self.data_idx.loc[item, ['ID', 'Label']]
 
     def __getitem__(self, item):
@@ -82,7 +86,12 @@ class BaseDataset(Dataset):
             data_dir = self.data_dir
 
         channels = load_channels(image_id, data_dir)
-        label_vec = get_label_vector(labels)
+
+        if labels is not None:
+            label_vec = get_label_vector(labels)
+        else:
+            label_vec = None
+
         return image_id, channels, label_vec
 
     def __len__(self):

@@ -103,6 +103,9 @@ class LogSumExp(Module):
 
     def forward(self, x):
         assert len(x.shape) == 2, 'Input must be a 2D matrix tensor'
-        n, _ = x.shape
+        if self.dim == 0:
+            n, _ = x.shape
+        else:
+            _, n = x.shape
         lse = torch.logsumexp(self.r * x, dim=self.dim, keepdim=self.keepdim)
         return (1 / self.r) * (lse + torch.log(torch.tensor(1 / n)))
