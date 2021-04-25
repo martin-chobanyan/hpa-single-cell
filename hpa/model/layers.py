@@ -1,5 +1,5 @@
 import torch
-from torch.nn import BatchNorm2d, Conv2d, Module, ReLU
+from torch.nn import BatchNorm2d, Conv2d, Module, ReLU, MultiheadAttention, Dropout, Sequential, Linear, LayerNorm
 
 
 class ConvBlock(Module):
@@ -79,6 +79,37 @@ class RoIPool(Module):
                 cell_vectors.append(feature_vec)
             i += cell_count
         return torch.stack(cell_vectors)
+
+
+class TransformerEncoderLayer(Module):
+    def __init__(self, emb_dim=512, num_heads=4, dropout=0.1, fc_hidden_dim=2048):
+        super().__init__()
+
+        # multihead attention section
+        self.multihead_attn = MultiheadAttention(emb_dim, num_heads)
+        self.dropout1 = Dropout(p=dropout)
+        self.layer_norm1 = LayerNorm(emb_dim)
+
+        # feedforward section
+        self.linear = Sequential(Linear(emb_dim, fc_hidden_dim), ReLU(), Linear(fc_hidden_dim, emb_dim))
+        self.dropout2 = Dropout(p=dropout)
+        self.layer_norm2 = LayerNorm(emb_dim)
+
+    # input shape: (num_cells, 1, emb_dim)
+    def forward(self, cell_seq):
+        # section 1: multi-head attention
+        attn_out, _ = self.multihead_attn(cell_seq, cell_seq, cell_seq)
+        attn_out = self.dropout1(attn_out)
+        attn_out += cell_seq
+        attn_out = self.layer_norm1(attn_out)
+
+        # section 2: feedforward
+        linear_out = self.linear(attn_out)
+        linear_out = self.dropout2(linear_out)
+        linear_out += attn_out
+        out = self.layer_norm2(linear_out)
+
+        return out
 
 
 class LogSumExp(Module):
