@@ -438,13 +438,15 @@ class CellTransformer(Module):
                  num_heads=4,
                  cell_feature_dim=2048,
                  num_classes=18,
-                 upsample=None):
+                 upsample=None,
+                 device='cuda'):
         super().__init__()
         self.backbone = backbone
         self.emb_cells = Linear(cell_feature_dim, emb_dim)
         self.feature_roi = feature_roi
         self.num_encoders = num_encoders
         self.upsample = upsample
+        self.device = device
 
         # transformer encoder layers
         self.encoders = ModuleList()
@@ -500,7 +502,7 @@ class CellTransformer(Module):
                 img_logits = self.lse(cell_logits[i:i + cell_count])
             else:
                 print('uh oh... no cell segmentations!')
-                img_logits = torch.zeros(1, self.num_classes)
+                img_logits = torch.zeros(1, self.num_classes, device=self.device)
             logits.append(img_logits)
             i += cell_count
         logits = torch.cat(logits, dim=0)
