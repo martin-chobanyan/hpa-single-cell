@@ -38,6 +38,24 @@ class Logger:
             writer.writerow(args)
 
 
+class LRScheduler:
+    def __init__(self, init_lr=0.00005, min_lr=0.00001, increment=0.00001, delay_start=0):
+        self.lr = init_lr
+        self.epoch = 0
+        self.min_lr = min_lr
+        self.increment = increment
+        self.delay_start = delay_start
+
+    def update(self):
+        if self.epoch >= self.delay_start:
+            update_val = max(self.lr - self.increment, self.min_lr)
+            if update_val != self.lr:
+                print(f'Changing learning rate: {self.lr}')
+            self.lr = update_val
+        self.epoch += 1
+        return min(self.lr, 1.0)
+
+
 def train_epoch(model,
                 dataloader,
                 criterion,

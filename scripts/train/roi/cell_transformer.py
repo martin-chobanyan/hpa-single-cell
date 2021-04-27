@@ -4,7 +4,7 @@ from yaml import safe_load
 import albumentations as A
 import pandas as pd
 import torch
-from torch.nn import Conv2d, ReLU, Sequential, Upsample
+from torch.nn import ReLU, Sequential, Upsample
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
@@ -12,12 +12,34 @@ from hpa.data import RGBYWithCellMasks, N_CHANNELS, CHANNEL_MEANS, CHANNEL_STDS
 from hpa.data.loader import cell_mask_collate
 from hpa.data.transforms import HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
-from hpa.model.layers import ConvBlock, RoIPool
+from hpa.model.layers import RoIPool
 from hpa.model.localizers import CellTransformer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
-from hpa.utils.train import checkpoint, Logger
+from hpa.utils.train import checkpoint, Logger, LRScheduler
 from hpa.utils.train_roi import train_roi_epoch, test_roi_epoch
+
+
+def create_optimizer(transformer, lr_value):
+    """Set up the transformer model's optimizer
+
+    Parameters
+    ----------
+    transformer: CellTransformer
+    lr_value: float
+
+    Returns
+    -------
+    torch.optim.Optimizer
+    """
+    param_groups = [
+        {'params': transformer.emb_cells.parameters(), 'lr': lr_value},
+        {'params': transformer.fc_logits.parameters(), 'lr': lr_value}
+    ]
+    for encoder in transformer.encoders:
+        param_groups.append({'params': encoder.parameters(), 'lr': lr_value})
+    return AdamW(param_groups)
+
 
 if __name__ == '__main__':
     print('Training a weakly-supervised RoI localizer with pretrained encoder')
@@ -25,7 +47,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi5.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi6.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -101,13 +123,16 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Prepare the model
     # -------------------------------------------------------------------------------------------
+
     DEVICE = 'cuda'
+    PRETRAINED_PATH = config['pretrained_path']
+
     FEATURE_ROI_METHOD = config['model']['feature_roi']
+    POSITION_ENCODING = config['model']['position_encoding']
+    POSITION_ENC_SHAPE = config['model']['position_encoding_shape']
     NUM_ENCODERS = config['model']['num_encoders']
     EMB_DIM = config['model']['emb_dim']
     NUM_HEADS = config['model']['num_heads']
-    LR = config['model']['lr']
-    PRETRAINED_PATH = config['pretrained_path']
 
     densenet_model = DensenetClass(in_channels=N_CHANNELS, dropout=True)
 
@@ -124,15 +149,23 @@ if __name__ == '__main__':
                                   densenet_model.encoder5,
                                   ReLU())
 
-    feature_roi_pool = RoIPool(method=FEATURE_ROI_METHOD)
+    feature_roi_pool = RoIPool(method=FEATURE_ROI_METHOD, positions=POSITION_ENCODING, tgt_shape=POSITION_ENC_SHAPE)
     upsample_fn = Upsample(scale_factor=2, mode='nearest')
+
+    if FEATURE_ROI_METHOD == 'max_and_avg':
+        cell_feature_dim = 2048
+    else:
+        cell_feature_dim = 1024
+    if POSITION_ENCODING:
+        cell_feature_dim += POSITION_ENC_SHAPE * POSITION_ENC_SHAPE
 
     model = CellTransformer(backbone=densenet_encoder,
                             feature_roi=feature_roi_pool,
                             num_encoders=NUM_ENCODERS,
                             emb_dim=EMB_DIM,
                             num_heads=NUM_HEADS,
-                            upsample=upsample_fn)
+                            upsample=upsample_fn,
+                            cell_feature_dim=cell_feature_dim)
 
     model = model.to(DEVICE)
 
@@ -141,13 +174,17 @@ if __name__ == '__main__':
 
     criterion = FocalSymmetricLovaszHardLogLoss()
 
-    param_groups = [
-        {'params': model.emb_cells.parameters(), 'lr': LR},
-        {'params': model.fc_logits.parameters(), 'lr': LR}
-    ]
-    for encoder in model.encoders:
-        param_groups.append({'params': encoder.parameters(), 'lr': LR})
-    optimizer = AdamW(param_groups)
+    # -------------------------------------------------------------------------------------------
+    # Prepare the optimizer
+    # -------------------------------------------------------------------------------------------
+
+    INIT_LR = config['model']['init_lr']
+    MIN_LR = config['model']['min_lr']
+    LR_STEP = config['model']['lr_step']
+    STEP_DELAY = config['model']['step_delay']
+
+    lr_scheduler = LRScheduler(init_lr=INIT_LR, min_lr=MIN_LR, increment=LR_STEP, delay_start=STEP_DELAY)
+    optimizer = create_optimizer(model, INIT_LR)
 
     # -------------------------------------------------------------------------------------------
     # Train the model
@@ -194,7 +231,9 @@ if __name__ == '__main__':
                                      epoch=epoch,
                                      n_batches=N_VAL_BATCHES)
 
+        lr = lr_scheduler.update()
+        optimizer = create_optimizer(model, lr)
+
         logger.add_entry(epoch, train_loss, *val_results)
 
-        # checkpoint all epochs for now
         checkpoint(model, os.path.join(CHECKPOINT_DIR, f'model{epoch}.pth'))
