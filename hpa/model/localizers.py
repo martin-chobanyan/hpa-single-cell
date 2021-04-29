@@ -2,9 +2,9 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, AvgPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
-                      Dropout, Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample)
+                      Dropout, Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample, ModuleList)
 
-from .layers import ConvBlock, LogSumExp, RoIPool
+from .layers import ConvBlock, LogSumExp, RoIPool, TransformerEncoderLayer
 from .prm import median_filter, peak_stimulation
 from ..utils.model import get_num_output_features, merge_tiles, tile_image_batch
 
@@ -424,6 +424,92 @@ class AttnWeightRoILocalizer(Module):
             result.append(cell_weight_logits)
         if return_maps:
             result.append(class_maps)
+        if len(result) == 1:
+            return result[0]
+        return result
+
+
+class CellTransformer(Module):
+    def __init__(self,
+                 backbone,
+                 feature_roi,
+                 num_encoders=1,
+                 emb_dim=512,
+                 num_heads=4,
+                 cell_feature_dim=2048,
+                 num_classes=18,
+                 upsample=None,
+                 device='cuda'):
+        super().__init__()
+        self.backbone = backbone
+        self.emb_cells = Linear(cell_feature_dim, emb_dim)
+        self.feature_roi = feature_roi
+        self.num_encoders = num_encoders
+        self.upsample = upsample
+        self.device = device
+
+        # transformer encoder layers
+        self.encoders = ModuleList()
+        for _ in range(self.num_encoders):
+            encoder = TransformerEncoderLayer(emb_dim=emb_dim, num_heads=num_heads)
+            self.encoders.append(encoder)
+
+        # mapping of cell features to cell logits
+        self.num_classes = num_classes
+        self.fc_logits = Linear(emb_dim, num_classes)
+        self.lse = LogSumExp()
+
+    def forward(self, cell_img, cell_masks, cell_counts, return_cells=False):
+        # shape: (batch, channel, height, width)
+        feature_maps = self.backbone(cell_img)
+
+        # shape: (batch, channel, k * height, k * width)
+        if self.upsample is not None:
+            feature_maps = self.upsample(feature_maps)
+
+        # shape: (num_total_cells, cell_feature_dim)
+        cell_features = self.feature_roi(feature_maps, cell_masks, cell_counts)
+
+        # shape: (num_total_cells, emb_dim)
+        cell_features = self.emb_cells(cell_features)
+
+        # pass the cells in each image through the encoding layers
+        i = 0
+        updated_features = []
+        for batch_idx, cell_count in enumerate(cell_counts):
+            if cell_count != 0:
+                # shape: (num_cells, 1, emb_dim)
+                cells = cell_features[i:i + cell_count]
+                cells = cells.view(cell_count, 1, -1)
+
+                # pass the cells through the encoding layers
+                for encoder in self.encoders:
+                    cells = encoder(cells)
+
+                cells = cells.view(cell_count, -1)
+                updated_features.append(cells)
+                i += cell_count
+        # shape: (num_total_cells, emb_dim)
+        updated_features = torch.cat(updated_features, dim=0)
+
+        # shape: (num_total_cells, num_classes)
+        cell_logits = self.fc_logits(updated_features)
+
+        i = 0
+        logits = []
+        for batch_idx, cell_count in enumerate(cell_counts):
+            if cell_count != 0:
+                img_logits = self.lse(cell_logits[i:i + cell_count])
+            else:
+                print('uh oh... no cell segmentations!')
+                img_logits = torch.zeros(1, self.num_classes, device=self.device)
+            logits.append(img_logits)
+            i += cell_count
+        logits = torch.cat(logits, dim=0)
+
+        result = [logits]
+        if return_cells:
+            result.append(cell_logits)
         if len(result) == 1:
             return result[0]
         return result

@@ -1,5 +1,6 @@
 import torch
-from torch.nn import BatchNorm2d, Conv2d, Module, ReLU
+from torch.nn import BatchNorm2d, Conv2d, Module, ReLU, MultiheadAttention, Dropout, Sequential, Linear, LayerNorm
+import torch.nn.functional as F
 
 
 class ConvBlock(Module):
@@ -29,7 +30,7 @@ class RoIPool(Module):
     by pooling the pixels in the feature map which have been keep after the cell mask filter.
     """
 
-    def __init__(self, method='max'):
+    def __init__(self, method='max', positions=False, tgt_shape=None):
         super().__init__()
         if method == 'max':
             self.pool_fn = self.roi_maxpool
@@ -39,6 +40,11 @@ class RoIPool(Module):
             self.pool_fn = self.roi_max_and_avg
         else:
             raise ValueError(f'Unknown RoI pooling method: {method}')
+
+        self.positions = positions
+        self.tgt_shape = tgt_shape
+        if (self.positions and self.tgt_shape is None) or (not self.positions and self.tgt_shape is not None):
+            raise ValueError('`positions` and `tgt_shape` must both be specified for cell positional encoding...')
 
     @staticmethod
     def roi_maxpool(x):
@@ -52,6 +58,15 @@ class RoIPool(Module):
         x_max = self.roi_maxpool(x)
         x_avg = self.roi_avgpool(x)
         return torch.cat([x_max, x_avg])
+
+    def encode_cell_positions(self, cell_masks):
+        if self.tgt_shape is None:
+            message = 'The shape must be specified in the method name if using cell positions'
+            message += '(e.g. position16 for 16x16 reduced cell masks)'
+            raise ValueError(message)
+        num_cells, *_ = cell_masks.shape
+        reduced_masks = F.adaptive_avg_pool2d(cell_masks.float(), self.tgt_shape)
+        return reduced_masks.view(num_cells, -1)
 
     def forward(self, feature_maps, cell_masks, cell_counts):
         """Forward call
@@ -68,7 +83,7 @@ class RoIPool(Module):
         Returns
         -------
         torch.Tensor
-            A tensor with shape (batch * cell_per_batch, num_features) where each row is a feature vector for a cell.
+            A tensor with shape (batch * cells_per_batch, num_features) where each row is a feature vector for a cell.
         """
         i = 0
         cell_vectors = []
@@ -78,7 +93,44 @@ class RoIPool(Module):
                 feature_vec = self.pool_fn(roi)
                 cell_vectors.append(feature_vec)
             i += cell_count
-        return torch.stack(cell_vectors)
+        cell_features = torch.stack(cell_vectors)
+
+        if self.positions:
+            cell_positions = self.encode_cell_positions(cell_masks)
+            cell_features = torch.cat([cell_features, cell_positions], dim=1)
+
+        return cell_features
+
+
+class TransformerEncoderLayer(Module):
+    def __init__(self, emb_dim=512, num_heads=4, dropout=0.1, fc_hidden_dim=2048):
+        super().__init__()
+
+        # multihead attention section
+        self.multihead_attn = MultiheadAttention(emb_dim, num_heads)
+        self.dropout1 = Dropout(p=dropout)
+        self.layer_norm1 = LayerNorm(emb_dim)
+
+        # feedforward section
+        self.linear = Sequential(Linear(emb_dim, fc_hidden_dim), ReLU(), Linear(fc_hidden_dim, emb_dim))
+        self.dropout2 = Dropout(p=dropout)
+        self.layer_norm2 = LayerNorm(emb_dim)
+
+    # input shape: (num_cells, 1, emb_dim)
+    def forward(self, cell_seq):
+        # section 1: multi-head attention
+        attn_out, _ = self.multihead_attn(cell_seq, cell_seq, cell_seq)
+        attn_out = self.dropout1(attn_out)
+        attn_out += cell_seq
+        attn_out = self.layer_norm1(attn_out)
+
+        # section 2: feedforward
+        linear_out = self.linear(attn_out)
+        linear_out = self.dropout2(linear_out)
+        linear_out += attn_out
+        out = self.layer_norm2(linear_out)
+
+        return out
 
 
 class LogSumExp(Module):
