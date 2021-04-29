@@ -515,6 +515,61 @@ class CellTransformer(Module):
         return result
 
 
+class RoIBottleneckTransformer(Module):
+    def __init__(self, bottleneck_model, roi_pool, num_classes=18):
+        """Initialization
+
+        Parameters
+        ----------
+        bottleneck_model: hpa.model.bottleneck.BottleStack
+        roi_pool: hpa.model.layers.RoIPool
+        num_classes: int, optional
+        """
+        super().__init__()
+        self.bottleneck_model = bottleneck_model
+        self.final_conv = Conv2d(bottleneck_model.dim_out, num_classes, kernel_size=1)
+        self.roi_pool = roi_pool
+        self.lse = LogSumExp()
+        self.maxpool = Sequential(AdaptiveMaxPool2d(1), Flatten())
+
+    def aggregate_cell_logits(self, cell_logits, class_maps, cell_counts):
+        i = 0
+        logits = []
+        for batch_idx, cell_count in enumerate(cell_counts):
+            if cell_count != 0:
+                img_logits = self.lse(cell_logits[i:i + cell_count])
+            else:
+                # simply take the maxpool of the class activation maps
+                # if no cell segmentations exist for this image in the batch
+                print('uh oh... no cell segmentation')
+                img_logits = self.maxpool(class_maps[[batch_idx]])
+            logits.append(img_logits)
+            i += cell_count
+        return torch.cat(logits, dim=0)
+
+    def forward(self, feature_maps, cell_masks, cell_counts, return_logits=True, return_cells=False, return_maps=False):
+        # run the input feature maps through the Bottleneck Transformer model
+        attn_fmaps = self.bottleneck_model(feature_maps)
+
+        # calculate the final CAMs
+        cams = self.final_conv(attn_fmaps)
+
+        # pool the CAMs to retrieve the cell-wise logits
+        cell_logits = self.roi_pool(cams, cell_masks, cell_counts)
+
+        result = []
+        if return_logits:
+            img_logits = self.aggregate_cell_logits(cell_logits, cams, cell_counts)
+            result.append(img_logits)
+        if return_cells:
+            result.append(cell_logits)
+        if return_maps:
+            result.append(cams)
+        if len(result) == 1:
+            return result[0]
+        return result
+
+
 class Densenet121Pyramid(Module):
     def __init__(self, densenet_model):
         """Initialization
