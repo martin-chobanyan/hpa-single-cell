@@ -3,6 +3,7 @@ from yaml import safe_load
 
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from cv2 import BORDER_CONSTANT
 import pandas as pd
 import torch
 from torch.nn import Conv2d, ReLU, Sequential
@@ -12,11 +13,30 @@ from torch.utils.data import DataLoader
 from hpa.data import RGBYDataset, N_CHANNELS, CHANNEL_MEANS, CHANNEL_STDS
 from hpa.data.transforms import HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
-from hpa.model.layers import ConvBlock
+from hpa.model.bottleneck import BottleStack
 from hpa.model.localizers import PeakResponseLocalizer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
-from hpa.utils.train import checkpoint, Logger, train_epoch, test_epoch
+from hpa.utils.train import checkpoint, Logger, train_epoch, test_epoch, LRScheduler
+
+
+def create_optimizer(prm_model, lr):
+    """Set up the optimizer
+
+    Parameters
+    ----------
+    prm_model: PeakResponseLocalizer
+    lr: float
+
+    Returns
+    -------
+
+    """
+    return AdamW([
+        {'params': prm_model.backbone[1].parameters(), 'lr': lr},
+        {'params': prm_model.backbone[2].parameters(), 'lr': lr}
+    ])
+
 
 if __name__ == '__main__':
     print('Training a weakly-supervised PRM localizer with pretrained encoder')
@@ -24,7 +44,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm17.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/decomposed/prm/prm18.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -32,19 +52,17 @@ if __name__ == '__main__':
     # Prepare the augmentations
     # -------------------------------------------------------------------------------------------
     IMG_DIM = config['data']['image_size']
-    CROP_SIZE = config['data']['crop']
     BATCH_SIZE = config['data']['batch_size']
 
     train_transform_fn = HPACompose([
         A.Flip(p=0.5),
         A.RandomRotate90(p=0.5),
-        A.RandomCrop(height=CROP_SIZE, width=CROP_SIZE),
+        A.ShiftScaleRotate(p=0.5, border_mode=BORDER_CONSTANT, mask_value=0),
         A.Normalize(mean=CHANNEL_MEANS, std=CHANNEL_STDS, max_pixel_value=255),
         ToTensorV2()
     ])
 
     val_transform_fn = HPACompose([
-        A.CenterCrop(height=CROP_SIZE, width=CROP_SIZE),
         A.Normalize(mean=CHANNEL_MEANS, std=CHANNEL_STDS, max_pixel_value=255),
         ToTensorV2()
     ])
@@ -75,8 +93,9 @@ if __name__ == '__main__':
     # Prepare the model
     # -------------------------------------------------------------------------------------------
     DEVICE = 'cuda'
-    LR = config['model']['lr']
     PRETRAINED_PATH = config['pretrained_path']
+
+    NUM_BOTTLENECK_LAYERS = config['model']['bottleneck']['num_layers']
 
     densenet_model = DensenetClass(in_channels=N_CHANNELS, dropout=True)
 
@@ -96,18 +115,35 @@ if __name__ == '__main__':
     for param in densenet_encoder.parameters():
         param.requires_grad = False
 
-    # submodules
-    backbone_cnn = Sequential(densenet_encoder, ConvBlock(1024, 1024, kernel_size=3))
+    bottleneck_cnns = BottleStack(
+        dim=1024,
+        fmap_size=48,
+        dim_out=1024,
+        num_layers=NUM_BOTTLENECK_LAYERS,
+        proj_factor=2,
+        dim_head=128,
+        rel_pos_emb=True,
+        downsample=False
+    )
     final_conv = Conv2d(1024, 18, 1)
+    backbone_cnn = Sequential(densenet_encoder, bottleneck_cnns, final_conv)
 
-    model = PeakResponseLocalizer(backbone=backbone_cnn, final_conv=final_conv)
+    model = PeakResponseLocalizer(backbone=backbone_cnn)
     model = model.to(DEVICE)
 
     criterion = FocalSymmetricLovaszHardLogLoss()
-    optimizer = AdamW([
-        {'params': model.backbone[1].parameters(), 'lr': LR},
-        {'params': model.final_conv.parameters(), 'lr': LR}
-    ])
+
+    # -------------------------------------------------------------------------------------------
+    # Prepare the optimizer
+    # -------------------------------------------------------------------------------------------
+
+    INIT_LR = config['model']['init_lr']
+    MIN_LR = config['model']['min_lr']
+    LR_STEP = config['model']['lr_step']
+    STEP_DELAY = config['model']['step_delay']
+
+    lr_scheduler = LRScheduler(init_lr=INIT_LR, min_lr=MIN_LR, increment=LR_STEP, delay_start=STEP_DELAY)
+    optimizer = create_optimizer(model, INIT_LR)
 
     # -------------------------------------------------------------------------------------------
     # Train the model
@@ -134,13 +170,11 @@ if __name__ == '__main__':
 
     best_loss = float('inf')
     for epoch in range(N_EPOCHS):
-
         train_loss = train_epoch(model=model,
                                  dataloader=train_loader,
                                  criterion=criterion,
                                  optimizer=optimizer,
                                  device=DEVICE,
-                                 clip_grad_value=1,
                                  progress=True,
                                  epoch=epoch,
                                  n_batches=N_TRAIN_BATCHES)
@@ -154,6 +188,9 @@ if __name__ == '__main__':
                                  progress=True,
                                  epoch=epoch,
                                  n_batches=N_VAL_BATCHES)
+
+        lr = lr_scheduler.update()
+        optimizer = create_optimizer(model, lr)
 
         logger.add_entry(epoch, train_loss, *val_results)
 
