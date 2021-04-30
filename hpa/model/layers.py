@@ -1,5 +1,6 @@
 import torch
-from torch.nn import BatchNorm2d, Conv2d, Module, ReLU, MultiheadAttention, Dropout, Sequential, Linear, LayerNorm
+from torch.nn import (BatchNorm2d, Conv2d, Module, ReLU, MultiheadAttention, Dropout, Sequential, Linear, LayerNorm,
+                      AdaptiveMaxPool2d, AdaptiveAvgPool2d)
 import torch.nn.functional as F
 
 
@@ -21,6 +22,30 @@ class ConvBlock(Module):
         if self.relu is not None:
             x = self.relu(x)
         return x
+
+
+class AdaptiveMaxAndAvgPool2d(Module):
+    def __init__(self, size):
+        super().__init__()
+        self.max_pool = AdaptiveMaxPool2d(size)
+        self.avg_pool = AdaptiveAvgPool2d(size)
+
+    def forward(self, x):
+        max_features = self.max_pool(x)
+        avg_features = self.avg_pool(x)
+        return torch.cat([max_features, avg_features], dim=1)
+
+
+class SqueezeAndExciteBlock(Module):
+    def __init__(self, in_channels, hidden_channels, kernel_size=3):
+        super().__init__()
+        self.conv_kxk = Conv2d(in_channels, hidden_channels, kernel_size=kernel_size, padding=int(kernel_size/2))
+        self.conv_1x1 = Conv2d(hidden_channels, in_channels, kernel_size=1)
+
+        self.fc_scale = Sequential(AdaptiveMaxAndAvgPool())
+
+    def forward(self, x):
+        return
 
 
 class RoIPool(Module):
