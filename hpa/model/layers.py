@@ -1,6 +1,6 @@
 import torch
 from torch.nn import (BatchNorm2d, Conv2d, Module, ReLU, MultiheadAttention, Dropout, Sequential, Linear, LayerNorm,
-                      AdaptiveMaxPool2d, AdaptiveAvgPool2d)
+                      AdaptiveMaxPool2d, AdaptiveAvgPool2d, Sigmoid, Flatten)
 import torch.nn.functional as F
 
 
@@ -37,15 +37,45 @@ class AdaptiveMaxAndAvgPool2d(Module):
 
 
 class SqueezeAndExciteBlock(Module):
-    def __init__(self, in_channels, hidden_channels, kernel_size=3):
+    def __init__(self, in_channels, hidden_channels, hidden_squeeze_dim, kernel_size=3):
         super().__init__()
         self.conv_kxk = Conv2d(in_channels, hidden_channels, kernel_size=kernel_size, padding=int(kernel_size/2))
         self.conv_1x1 = Conv2d(hidden_channels, in_channels, kernel_size=1)
 
-        self.fc_scale = Sequential(AdaptiveMaxAndAvgPool())
+        # channel attention module
+        self.fc_scale = Sequential(AdaptiveMaxAndAvgPool2d(1),
+                                   Flatten(),
+                                   Linear(2 * hidden_channels, hidden_squeeze_dim),
+                                   ReLU(),
+                                   Linear(hidden_squeeze_dim, hidden_channels),
+                                   Sigmoid())
+
+        self.bn1 = BatchNorm2d(hidden_channels)
+        self.bn2 = BatchNorm2d(in_channels)
+
+        self.relu1 = ReLU()
+        self.relu2 = ReLU()
 
     def forward(self, x):
-        return
+        x_input = x
+        x = self.conv_kxk(x)
+
+        # calculate channel attention scales
+        scale = self.fc_scale(x)
+        scale = scale.view(*scale.shape, 1, 1)
+
+        # scale the channels
+        x *= scale
+
+        x = self.bn1(x)
+        x = self.relu1(x)
+        x = self.conv_1x1(x)
+        x = self.bn2(x)
+
+        x += x_input
+        x = self.relu2(x)
+
+        return x
 
 
 class RoIPool(Module):
