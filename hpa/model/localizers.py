@@ -226,30 +226,21 @@ class PooledLocalizer(Module):
 
 
 class PeakResponseLocalizer(Module):
-    def __init__(self, backbone, final_conv, window_size=3, scale_factor=1):
+    def __init__(self, backbone, window_size=3, peak_filter=median_filter):
         super().__init__()
         self.backbone = backbone
-        self.final_conv = final_conv
         self.window_size = window_size
-        self.scale_factor = scale_factor
-
-        self.upsample = None
-        if self.scale_factor > 1:
-            self.upsample = Upsample(scale_factor=self.scale_factor, mode='bilinear', align_corners=True)
+        self.peak_filter = peak_filter
 
     def forward(self, x, return_maps=False, return_peaks=False):
-        feature_maps = self.backbone(x)
-        class_maps = self.final_conv(feature_maps)
-        if self.upsample is not None:
-            class_maps = self.upsample(class_maps)
-
-        peak_list, class_logits = peak_stimulation(input=class_maps,
+        cams = self.backbone(x)
+        peak_list, class_logits = peak_stimulation(input=cams,
                                                    return_aggregation=True,
                                                    win_size=self.window_size,
-                                                   peak_filter=median_filter)
+                                                   peak_filter=self.peak_filter)
         result = [class_logits]
         if return_maps:
-            result.append(class_maps)
+            result.append(cams)
         if return_peaks:
             result.append(peak_list)
         if len(result) == 1:

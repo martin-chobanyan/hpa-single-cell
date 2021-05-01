@@ -53,8 +53,7 @@ class SqueezeAndExciteBlock(Module):
         self.bn1 = BatchNorm2d(hidden_channels)
         self.bn2 = BatchNorm2d(in_channels)
 
-        self.relu1 = ReLU()
-        self.relu2 = ReLU()
+        self.relu = ReLU()
 
     def forward(self, x):
         x_input = x
@@ -65,16 +64,14 @@ class SqueezeAndExciteBlock(Module):
         scale = scale.view(*scale.shape, 1, 1)
 
         # scale the channels
-        x *= scale
+        x = x * scale
 
         x = self.bn1(x)
-        x = self.relu1(x)
         x = self.conv_1x1(x)
         x = self.bn2(x)
 
-        x += x_input
-        x = self.relu2(x)
-
+        x = x + x_input
+        x = self.relu(x)
         return x
 
 
