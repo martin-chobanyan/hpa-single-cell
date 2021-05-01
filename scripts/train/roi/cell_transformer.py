@@ -17,6 +17,7 @@ from hpa.model.layers import RoIPool
 from hpa.model.localizers import CellTransformer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
+from hpa.utils.model import get_num_params
 from hpa.utils.train import checkpoint, Logger, LRScheduler
 from hpa.utils.train_roi import train_roi_epoch, test_roi_epoch
 
@@ -48,7 +49,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi7.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi8.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -170,6 +171,8 @@ if __name__ == '__main__':
                             cell_feature_dim=cell_feature_dim)
 
     model = model.to(DEVICE)
+    print(f'Number of frozen parameters: {get_num_params(densenet_encoder)}')
+    print(f'Total number of parameters: {get_num_params(model)}')
 
     for param in densenet_encoder.parameters():
         param.requires_grad = False

@@ -2,6 +2,13 @@ import torch
 from torch.nn import Conv2d
 
 
+def get_num_params(model):
+    num_total_params = 0
+    for p in model.parameters():
+        num_total_params += p.numel()
+    return num_total_params
+
+
 def get_num_output_features(cnn):
     final_conv = None
     for m in cnn.modules():
