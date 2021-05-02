@@ -213,3 +213,26 @@ class LogSumExp(Module):
             _, n = x.shape
         lse = torch.logsumexp(self.r * x, dim=self.dim, keepdim=self.keepdim)
         return (1 / self.r) * (lse + torch.log(torch.tensor(1 / n)))
+
+
+class CellLogitLSE(Module):
+    def __init__(self, lse_scale=5, device='cuda', verbose=True):
+        super().__init__()
+        self.lse = LogSumExp(r=lse_scale)
+        self.device = device
+        self.verbose = verbose
+
+    def forward(self, cell_logits, cell_counts):
+        i = 0
+        logits = []
+        num_classes = cell_logits.size(1)
+        for batch_idx, cell_count in enumerate(cell_counts):
+            if cell_count != 0:
+                img_logits = self.lse(cell_logits[i:i + cell_count])
+            else:
+                if self.verbose:
+                    print('uh oh... no cell segmentations for this image!')
+                img_logits = torch.zeros(1, num_classes, device=self.device)
+            logits.append(img_logits)
+            i += cell_count
+        return torch.cat(logits, dim=0)
