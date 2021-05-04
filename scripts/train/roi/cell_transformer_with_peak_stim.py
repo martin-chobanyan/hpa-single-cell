@@ -13,7 +13,7 @@ from hpa.data import RGBYWithCellMasks, N_CHANNELS, CHANNEL_MEANS, CHANNEL_STDS
 from hpa.data.loader import cell_mask_collate
 from hpa.data.transforms import HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
-from hpa.model.layers import RoIPool, CellLogitLSE, SqueezeAndExciteBlock
+from hpa.model.layers import RoIPool, CellLogitLSE, ResidualBlock
 from hpa.model.localizers import CellTransformer, PeakResponseLocalizer, PeakCellTransformer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
@@ -38,7 +38,9 @@ def create_optimizer(model, lr_value):
         {'params': model.cell_transformer.parameters(), 'lr': lr_value},
         {'params': model.peak_cnn.parameters(), 'lr': lr_value},
         {'params': (model.max_and_avg_weights, model.max_and_avg_bias), 'lr': lr_value},
-        {'params': model.fc_cam_weights.parameters(), 'lr': lr_value}
+        {'params': model.fc_embed_cnn_features.parameters(), 'lr': lr_value},
+        {'params': model.cross_attn.parameters(), 'lr': lr_value},
+        {'params': model.fc_cam_logit_weights.parameters(), 'lr': lr_value}
     ]
     return AdamW(param_groups)
 
@@ -49,7 +51,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi10.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi11.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -82,13 +84,13 @@ if __name__ == '__main__':
     SEG_DIR = os.path.join(ROOT_DIR, 'segmentation', 'competition_1536x1536')
     EXTERNAL_DATA_DIR = os.path.join(ROOT_DIR, 'images', 'public_1536x1536')
     EXTERNAL_SEG_DIR = os.path.join(ROOT_DIR, 'segmentation', 'public_1536x1536')
-    NUM_WORKERS = 0
+    NUM_WORKERS = 4
 
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))
 
-    # train_idx = train_idx.head(200)
-    # val_idx = val_idx.head(200)
+    train_idx = train_idx.head(200)
+    val_idx = val_idx.head(200)
 
     train_data = RGBYWithCellMasks(data_idx=train_idx,
                                    data_dir=DATA_DIR,
@@ -180,26 +182,22 @@ if __name__ == '__main__':
     # Prepare the Peak Stimulation CNN
     # -------------------------------------------------------------------------------------------
 
-    NUM_CNN_LAYERS = config['model']['squeeze_and_excite']['num_layers']
-    SE_HIDDEN_DIM = config['model']['squeeze_and_excite']['hidden_dim']
-    SE_SQUEEZE_DIM = config['model']['squeeze_and_excite']['squeeze_dim']
+    NUM_CNN_LAYERS = config['model']['cnn']['num_layers']
+    CNN_HIDDEN_DIM = config['model']['cnn']['hidden_dim']
 
-    se_layers = Sequential(*[SqueezeAndExciteBlock(1024, SE_HIDDEN_DIM, SE_SQUEEZE_DIM) for _ in range(NUM_CNN_LAYERS)])
+    cnn_layers = Sequential(*[ResidualBlock(1024, CNN_HIDDEN_DIM) for _ in range(NUM_CNN_LAYERS)])
     final_conv = Conv2d(1024, 18, 1)
-    cnn_layers = Sequential(se_layers, final_conv)
-    peak_cnn = PeakResponseLocalizer(cnn_layers)
+    peak_cnn = PeakResponseLocalizer(cnn=cnn_layers, final_conv=final_conv)
 
     # -------------------------------------------------------------------------------------------
     # Prepare the full model
     # -------------------------------------------------------------------------------------------
 
-    cam_upsample_fn = Upsample(scale_factor=2, mode='nearest')
     lse_fn = CellLogitLSE(device=DEVICE)
 
     model = PeakCellTransformer(backbone=densenet_encoder,
                                 cell_transformer=transformer,
                                 peak_cnn=peak_cnn,
-                                upsample_cam=cam_upsample_fn,
                                 lse_fn=lse_fn)
     model = model.to(DEVICE)
     print(f'Total number of parameters: {get_num_params(model)}')
