@@ -230,8 +230,8 @@ class PeakCellTransformer(Module):
                  backbone,
                  cell_transformer,
                  peak_cnn,
-                 upsample_cam,
-                 lse_fn):
+                 lse_fn,
+                 scale_factor=2):
         """Initialization
 
         Parameters
@@ -242,18 +242,23 @@ class PeakCellTransformer(Module):
             The cell-based transformer (sequence of self-attention layers)
         peak_cnn: PeakResponseLocalizer
             The CNN model with peak stimulation
-        upsample_cam: torch.nn.Upsample
-            An upsampling layer for the class activation maps (must match the cell mask shape)
         lse_fn: hpa.model.layers.CellLogitLSE
             The LSE (log-sum-exp) module to aggregate the cell-level logits to image-level logits
+        scale_factor: int
+            The upsampling scale factor for the CAMs
         """
         super().__init__()
         self.backbone = backbone
         self.cell_transformer = cell_transformer
         self.peak_cnn = peak_cnn
 
+        # store the transformer encoder attributes
+        self.emb_dim = self.cell_transformer.emb_dim
+        self.num_heads = self.cell_transformer.num_heads
+
         # define cell RoI pooling method for CAMs
-        self.upsample_cam = upsample_cam
+        self.scale_factor = scale_factor
+        self.fmap_roi_pool = RoIPool(method='max_and_avg')
         self.cam_roi_pool = RoIPool(method='max_and_avg')
 
         # define linear mapping from extracted avg and max features from each CAM to logits
@@ -261,14 +266,19 @@ class PeakCellTransformer(Module):
         self.max_and_avg_weights = Parameter(torch.rand(1, 2, self.num_classes))
         self.max_and_avg_bias = Parameter(torch.zeros(1, self.num_classes))
 
-        # define mapping from transformer features to sigmoid-activated cam logit weights
-        self.fc_cam_weights = Sequential(Linear(cell_transformer.emb_dim, self.num_classes), Sigmoid())
+        # embedding layer for extracted cell features from penultimate CNN layer
+        self.fc_embed_cnn_features = Linear(2 * self.emb_dim, self.emb_dim)
 
+        # define mapping from transformer features to sigmoid-activated cam logit weights
+        self.cross_attn = TransformerEncoderLayer(emb_dim=self.emb_dim, num_heads=self.num_heads, self_attn=False)
+        self.fc_cam_logit_weights = Linear(self.emb_dim, self.num_classes)
+
+        # log-sum-exp aggregator
         self.lse_fn = lse_fn
 
     def extract_cell_logits_from_cams(self, cams, cell_masks, cell_counts):
         # upsample the CAMs to the same dimension as the cell masks
-        cams = self.upsample_cam(cams)
+        cams = F.interpolate(cams, scale_factor=self.scale_factor, mode='nearest')
 
         # RoI pool the CAMs to get cell features
         # shape: (num_total_cells, 2 * num_classes)
@@ -280,6 +290,43 @@ class PeakCellTransformer(Module):
         cam_cell_logits = (self.max_and_avg_weights * cell_cam_features).sum(dim=1) + self.max_and_avg_bias
 
         return cam_cell_logits
+
+    def extract_cell_features_from_fmaps(self, pen_ult_fmaps, cell_masks, cell_counts):
+        fmaps = F.interpolate(pen_ult_fmaps, scale_factor=self.scale_factor, mode='nearest')
+
+        cell_features = self.fmap_roi_pool(fmaps, cell_masks, cell_counts)
+        cell_features = self.fc_embed_cnn_features(cell_features)
+
+        return cell_features
+
+    def apply_cross_attention(self, cell_attn_features, cell_cnn_features, cell_counts):
+        # pass the cells in each image through the encoding layers
+        i = 0
+        updated_features = []
+        for batch_idx, cell_count in enumerate(cell_counts):
+            if cell_count != 0:
+                # shape: (num_cells, 1, emb_dim)
+                cells_attn = cell_attn_features[i:i + cell_count]
+                cells_attn = cells_attn.view(cell_count, 1, -1)
+
+                cells_cnn = cell_cnn_features[i:i + cell_count]
+                cells_cnn = cells_cnn.view(cell_count, 1, -1)
+
+                # pass the cells through the single, cross-attention layer
+                cells = self.cross_attn(cells_attn, cells_cnn)
+
+                cells = cells.view(cell_count, -1)
+                updated_features.append(cells)
+                i += cell_count
+
+        # stack the attention results
+        updated_features = torch.cat(updated_features, dim=0)
+
+        # map the dimension to the number of classes and apply sigmoid
+        cell_logit_weights = torch.sigmoid(self.fc_cam_logit_weights(updated_features))
+
+        # shape: (num_total_cells, emb_dim)
+        return cell_logit_weights
 
     def forward(self,
                 cell_imgs,
@@ -302,13 +349,16 @@ class PeakCellTransformer(Module):
 
         # Branch 2: peak-stimulated CNN
         # retrieve the peak logits and class activation maps
-        peak_logits, cams = self.peak_cnn(feature_maps, return_maps=True)
+        peak_logits, cams, pen_ult_fmaps = self.peak_cnn(feature_maps, return_maps=True, return_features=True)
+
+        # extract cell features from the penultimate CNN layer
+        pen_ult_cell_features = self.extract_cell_features_from_fmaps(pen_ult_fmaps, cell_masks, cell_counts)
+
+        # calculate the sigmoid weights over the CAM logits
+        cam_logit_weights = self.apply_cross_attention(cell_attn_features, pen_ult_cell_features, cell_counts)
 
         # extract the individual cell logits from the CAMs
         cam_cell_logits = self.extract_cell_logits_from_cams(cams, cell_masks, cell_counts)
-
-        # map the cell features to sigmoid weights over the incoming CAM-based cell logits
-        cam_logit_weights = self.fc_cam_weights(cell_attn_features)
 
         # scale the CAM-based logits with the attention weights
         scaled_cam_logits = cam_cell_logits * cam_logit_weights
@@ -334,14 +384,17 @@ class PeakCellTransformer(Module):
 
 
 class PeakResponseLocalizer(Module):
-    def __init__(self, cnn, window_size=3, peak_filter=median_filter):
+    def __init__(self, cnn, final_conv, window_size=3, peak_filter=median_filter):
         super().__init__()
         self.cnn = cnn
+        self.final_conv = final_conv
         self.window_size = window_size
         self.peak_filter = peak_filter
 
-    def forward(self, feature_maps, return_maps=False, return_peaks=False):
-        cams = self.cnn(feature_maps)
+    def forward(self, feature_maps, return_maps=False, return_features=False, return_peaks=False):
+        features = self.cnn(feature_maps)
+        cams = self.final_conv(features)
+
         peak_list, class_logits = peak_stimulation(input=cams,
                                                    return_aggregation=True,
                                                    win_size=self.window_size,
@@ -349,6 +402,8 @@ class PeakResponseLocalizer(Module):
         result = [class_logits]
         if return_maps:
             result.append(cams)
+        if return_features:
+            result.append(features)
         if return_peaks:
             result.append(peak_list)
         if len(result) == 1:
@@ -369,6 +424,7 @@ class CellTransformer(Module):
         self.feature_roi = feature_roi
         self.num_encoders = num_encoders
         self.emb_dim = emb_dim
+        self.num_heads = num_heads
         self.emb_cells = Linear(cell_feature_dim, emb_dim)
         self.num_classes = num_classes
         self.upsample = upsample

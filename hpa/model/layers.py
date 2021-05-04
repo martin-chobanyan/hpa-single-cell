@@ -155,7 +155,7 @@ class RoIPool(Module):
 
 
 class TransformerEncoderLayer(Module):
-    def __init__(self, emb_dim=512, num_heads=4, dropout=0.1, fc_hidden_dim=2048):
+    def __init__(self, emb_dim=1024, num_heads=4, dropout=0.1, fc_hidden_dim=2048, self_attn=True):
         super().__init__()
 
         # multihead attention section
@@ -168,8 +168,9 @@ class TransformerEncoderLayer(Module):
         self.dropout2 = Dropout(p=dropout)
         self.layer_norm2 = LayerNorm(emb_dim)
 
-    # input shape: (num_cells, 1, emb_dim)
-    def forward(self, cell_seq):
+        self.self_attn = self_attn
+
+    def apply_self_attention(self, cell_seq):
         # section 1: multi-head attention
         attn_out, _ = self.multihead_attn(cell_seq, cell_seq, cell_seq)
         attn_out = self.dropout1(attn_out)
@@ -183,6 +184,28 @@ class TransformerEncoderLayer(Module):
         out = self.layer_norm2(linear_out)
 
         return out
+
+    def apply_target_attention(self, src_seq, tgt_seq):
+        # section 1: multi-head attention
+        attn_out, _ = self.multihead_attn(tgt_seq, src_seq, src_seq)
+        attn_out = self.dropout1(attn_out)
+        attn_out += src_seq
+        attn_out = self.layer_norm1(attn_out)
+
+        # section 2: feedforward
+        linear_out = self.linear(attn_out)
+        linear_out = self.dropout2(linear_out)
+        linear_out += attn_out
+        out = self.layer_norm2(linear_out)
+
+        return out
+
+    # input shape: (num_cells, 1, emb_dim)
+    def forward(self, src_seq, tgt_seq=None):
+        if self.self_attn:
+            return self.apply_self_attention(src_seq)
+        else:
+            return self.apply_target_attention(src_seq, tgt_seq)
 
 
 class LogSumExp(Module):
