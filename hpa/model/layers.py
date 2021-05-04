@@ -36,6 +36,26 @@ class AdaptiveMaxAndAvgPool2d(Module):
         return torch.cat([max_features, avg_features], dim=1)
 
 
+class ResidualBlock(Module):
+    def __init__(self, in_channels, hidden_channels, kernel_size=3):
+        super().__init__()
+        self.conv_kxk = Conv2d(in_channels, hidden_channels, kernel_size=kernel_size, padding=int(kernel_size/2))
+        self.conv_1x1 = Conv2d(hidden_channels, in_channels, kernel_size=1)
+        self.bn1 = BatchNorm2d(hidden_channels)
+        self.bn2 = BatchNorm2d(in_channels)
+        self.relu = ReLU()
+
+    def forward(self, x):
+        x_input = x
+        x = self.conv_kxk(x)
+        x = self.bn1(x)
+        x = self.conv_1x1(x)
+        x = self.bn2(x)
+        x = x + x_input
+        x = self.relu(x)
+        return x
+
+
 class SqueezeAndExciteBlock(Module):
     def __init__(self, in_channels, hidden_channels, hidden_squeeze_dim, kernel_size=3):
         super().__init__()
