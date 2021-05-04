@@ -258,7 +258,8 @@ class PeakCellTransformer(Module):
 
         # define linear mapping from extracted avg and max features from each CAM to logits
         self.num_classes = self.cell_transformer.num_classes
-        self.fc_cam_logits = Linear(2, 1)
+        self.max_and_avg_weights = Parameter(torch.rand(1, 2, self.num_classes))
+        self.max_and_avg_bias = Parameter(torch.zeros(1, self.num_classes))
 
         # define mapping from transformer features to sigmoid-activated cam logit weights
         self.fc_cam_weights = Sequential(Linear(cell_transformer.emb_dim, self.num_classes), Sigmoid())
@@ -276,9 +277,8 @@ class PeakCellTransformer(Module):
 
         # linearly combine the max and average features to create cell logits
         cell_cam_features = cell_cam_features.view(num_total_cells, 2, -1)
-        cell_cam_features = cell_cam_features.permute(0, 2, 1)
-        cam_cell_logits = self.fc_cam_logits(cell_cam_features)
-        cam_cell_logits = cam_cell_logits.view(num_total_cells, -1)
+        cam_cell_logits = (self.max_and_avg_weights * cell_cam_features).sum(dim=1) + self.max_and_avg_bias
+
         return cam_cell_logits
 
     def forward(self,
