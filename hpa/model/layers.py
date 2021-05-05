@@ -233,3 +233,43 @@ class LogSumExp(Module):
             _, n = x.shape
         lse = torch.logsumexp(self.r * x, dim=self.dim, keepdim=self.keepdim)
         return (1 / self.r) * (lse + torch.log(torch.tensor(1 / n)))
+
+
+class CellLogitLSE(Module):
+    """Apply LogSumExp over a batch of cell-level logits to retrieve a batch of image-level logits"""
+    def __init__(self, lse_scale=5, device='cuda', verbose=True):
+        super().__init__()
+        self.lse = LogSumExp(r=lse_scale)
+        self.device = device
+        self.verbose = verbose
+
+    def forward(self, cell_logits, cell_counts):
+        """Forward Propagation
+
+        Parameters
+        ----------
+        cell_logits: torch.Tensor
+            A pytorch tensor with shape (num_total_cells, num_classes) where num_total_cells is the total number of
+            cells across all of the images in the batch.
+        cell_counts: torch.LongTensor
+            A tensor denoting the number of cells in each image (in order with respect to the batch)
+
+        Returns
+        -------
+        torch.Tensor
+            A batch of image-level logits with shape (num_images, num_classes)
+            where the cell logits have been reduced using LogSumExp
+        """
+        i = 0
+        logits = []
+        num_classes = cell_logits.size(1)
+        for batch_idx, cell_count in enumerate(cell_counts):
+            if cell_count != 0:
+                img_logits = self.lse(cell_logits[i:i + cell_count])
+            else:
+                if self.verbose:
+                    print('uh oh... no cell segmentations for this image!')
+                img_logits = torch.zeros(1, num_classes, device=self.device)
+            logits.append(img_logits)
+            i += cell_count
+        return torch.cat(logits, dim=0)

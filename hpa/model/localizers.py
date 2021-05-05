@@ -2,7 +2,7 @@
 import torch
 import torch.nn.functional as F
 from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, AvgPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
-                      Dropout, Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample, ModuleList)
+                      Dropout, Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample, ModuleList, Sigmoid)
 
 from .layers import ConvBlock, LogSumExp, RoIPool, TransformerEncoderLayer
 from .prm import median_filter, peak_stimulation
@@ -225,15 +225,123 @@ class PooledLocalizer(Module):
         return class_logits
 
 
-class PeakResponseLocalizer(Module):
-    def __init__(self, backbone, window_size=3, peak_filter=median_filter):
+class PeakCellTransformer(Module):
+    def __init__(self,
+                 backbone,
+                 cell_transformer,
+                 peak_cnn,
+                 upsample_cam,
+                 lse_fn):
+        """Initialization
+
+        Parameters
+        ----------
+        backbone: torch.nn.Module
+            The backbone CNN
+        cell_transformer: CellTransformer
+            The cell-based transformer (sequence of self-attention layers)
+        peak_cnn: PeakResponseLocalizer
+            The CNN model with peak stimulation
+        upsample_cam: torch.nn.Upsample
+            An upsampling layer for the class activation maps (must match the cell mask shape)
+        lse_fn: hpa.model.layers.CellLogitLSE
+            The LSE (log-sum-exp) module to aggregate the cell-level logits to image-level logits
+        """
         super().__init__()
         self.backbone = backbone
+        self.cell_transformer = cell_transformer
+        self.peak_cnn = peak_cnn
+
+        # define cell RoI pooling method for CAMs
+        self.upsample_cam = upsample_cam
+        self.cam_roi_pool = RoIPool(method='max_and_avg')
+
+        # define linear mapping from extracted avg and max features from each CAM to logits
+        self.num_classes = self.cell_transformer.num_classes
+        self.max_and_avg_weights = Parameter(torch.rand(1, 2, self.num_classes))
+        self.max_and_avg_bias = Parameter(torch.zeros(1, self.num_classes))
+
+        # define mapping from transformer features to sigmoid-activated cam logit weights
+        self.fc_cam_weights = Sequential(Linear(cell_transformer.emb_dim, self.num_classes), Sigmoid())
+
+        self.lse_fn = lse_fn
+
+    def extract_cell_logits_from_cams(self, cams, cell_masks, cell_counts):
+        # upsample the CAMs to the same dimension as the cell masks
+        cams = self.upsample_cam(cams)
+
+        # RoI pool the CAMs to get cell features
+        # shape: (num_total_cells, 2 * num_classes)
+        cell_cam_features = self.cam_roi_pool(cams, cell_masks, cell_counts)
+        num_total_cells, _ = cell_cam_features.shape
+
+        # linearly combine the max and average features to create cell logits
+        cell_cam_features = cell_cam_features.view(num_total_cells, 2, -1)
+        cam_cell_logits = (self.max_and_avg_weights * cell_cam_features).sum(dim=1) + self.max_and_avg_bias
+
+        return cam_cell_logits
+
+    def forward(self,
+                cell_imgs,
+                cell_masks,
+                cell_counts,
+                return_peak_logits=True,
+                return_cells=False,
+                return_maps=False,
+                return_weights=False):
+
+        # run cell images through backbone CNN
+        feature_maps = self.backbone(cell_imgs)
+
+        # Branch 1: self-attention transformer branch
+        # retrieve transformer based cell logits and features
+        cell_attn_logits, cell_attn_features = self.cell_transformer(feature_maps,
+                                                                     cell_masks,
+                                                                     cell_counts,
+                                                                     return_cell_features=True)
+
+        # Branch 2: peak-stimulated CNN
+        # retrieve the peak logits and class activation maps
+        peak_logits, cams = self.peak_cnn(feature_maps, return_maps=True)
+
+        # extract the individual cell logits from the CAMs
+        cam_cell_logits = self.extract_cell_logits_from_cams(cams, cell_masks, cell_counts)
+
+        # map the cell features to sigmoid weights over the incoming CAM-based cell logits
+        cam_logit_weights = self.fc_cam_weights(cell_attn_features)
+
+        # scale the CAM-based logits with the attention weights
+        scaled_cam_logits = cam_cell_logits * cam_logit_weights
+
+        # add the CAM-based logits with the transformer based logits
+        cell_logits = scaled_cam_logits + cell_attn_logits
+
+        # aggregate the cell logits into image-level logits
+        logits = self.lse_fn(cell_logits, cell_counts)
+
+        result = [logits]
+        if return_peak_logits:
+            result.append(peak_logits)
+        if return_cells:
+            result.append(cell_logits)
+        if return_maps:
+            result.append(cams)
+        if return_weights:
+            result.append(cam_logit_weights)
+        if len(result) == 1:
+            return result[0]
+        return result
+
+
+class PeakResponseLocalizer(Module):
+    def __init__(self, cnn, window_size=3, peak_filter=median_filter):
+        super().__init__()
+        self.cnn = cnn
         self.window_size = window_size
         self.peak_filter = peak_filter
 
-    def forward(self, x, return_maps=False, return_peaks=False):
-        cams = self.backbone(x)
+    def forward(self, feature_maps, return_maps=False, return_peaks=False):
+        cams = self.cnn(feature_maps)
         peak_list, class_logits = peak_stimulation(input=cams,
                                                    return_aggregation=True,
                                                    win_size=self.window_size,
@@ -246,6 +354,85 @@ class PeakResponseLocalizer(Module):
         if len(result) == 1:
             return result[0]
         return tuple(result)
+
+
+class CellTransformer(Module):
+    def __init__(self,
+                 feature_roi,
+                 num_encoders=1,
+                 emb_dim=512,
+                 num_heads=4,
+                 cell_feature_dim=2048,
+                 num_classes=18,
+                 upsample=None):
+        super().__init__()
+        self.feature_roi = feature_roi
+        self.num_encoders = num_encoders
+        self.emb_dim = emb_dim
+        self.emb_cells = Linear(cell_feature_dim, emb_dim)
+        self.num_classes = num_classes
+        self.upsample = upsample
+
+        # transformer encoder layers
+        self.encoders = ModuleList()
+        for _ in range(self.num_encoders):
+            encoder = TransformerEncoderLayer(emb_dim=emb_dim, num_heads=num_heads)
+            self.encoders.append(encoder)
+
+        # mapping of cell features to cell logits
+        self.fc_logits = Linear(emb_dim, num_classes)
+
+    def extract_cell_features(self, feature_maps, cell_masks, cell_counts):
+        if self.upsample is not None:
+            # shape: (batch, channel, k * height, k * width)
+            feature_maps = self.upsample(feature_maps)
+
+        # shape: (num_total_cells, cell_feature_dim)
+        cell_features = self.feature_roi(feature_maps, cell_masks, cell_counts)
+
+        # shape: (num_total_cells, emb_dim)
+        cell_features = self.emb_cells(cell_features)
+        return cell_features
+
+    def attend_over_cells(self, cell_features, cell_counts):
+        # pass the cells in each image through the encoding layers
+        i = 0
+        updated_features = []
+        for batch_idx, cell_count in enumerate(cell_counts):
+            if cell_count != 0:
+                # shape: (num_cells, 1, emb_dim)
+                cells = cell_features[i:i + cell_count]
+                cells = cells.view(cell_count, 1, -1)
+
+                # pass the cells through the encoding layers
+                for encoder in self.encoders:
+                    cells = encoder(cells)
+
+                cells = cells.view(cell_count, -1)
+                updated_features.append(cells)
+                i += cell_count
+
+        # shape: (num_total_cells, emb_dim)
+        return torch.cat(updated_features, dim=0)
+
+    def forward(self, feature_maps, cell_masks, cell_counts, return_cell_features=False):
+
+        # extract the cell features by pooling their RoIs and embedding the resulting vectors
+        cell_features = self.extract_cell_features(feature_maps, cell_masks, cell_counts)
+
+        # pass the cell features through the transformer encoding layers
+        cell_features = self.attend_over_cells(cell_features, cell_counts)
+
+        # map each cell feature vector to a logit
+        # shape: (num_total_cells, num_classes)
+        cell_logits = self.fc_logits(cell_features)
+
+        result = [cell_logits]
+        if return_cell_features:
+            result.append(cell_features)
+        if len(result) == 1:
+            return result[0]
+        return result
 
 
 class RoILocalizer(Module):
@@ -420,7 +607,7 @@ class AttnWeightRoILocalizer(Module):
         return result
 
 
-class CellTransformer(Module):
+class CellTransformerV1(Module):
     def __init__(self,
                  backbone,
                  feature_roi,
