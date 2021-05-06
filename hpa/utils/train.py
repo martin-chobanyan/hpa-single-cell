@@ -20,18 +20,19 @@ class Logger:
         The columns for the CSV file as a list of strings
     """
 
-    def __init__(self, filepath, header):
+    def __init__(self, filepath, header=None):
         self.filepath = filepath
         self.header = header
-        with open(filepath, 'w') as file:
-            writer = csv.writer(file)
-            writer.writerow(header)
+        if self.header is not None:
+            with open(filepath, 'w') as file:
+                writer = csv.writer(file)
+                writer.writerow(header)
 
     def add_entry(self, *args):
         """Append a row to the CSV file
         The arguments for this function must match the length and order of the initialized headers.
         """
-        if len(args) != len(self.header):
+        if self.header is not None and len(args) != len(self.header):
             raise ValueError('Entry length must match the header length!')
         with open(self.filepath, 'a') as file:
             writer = csv.writer(file)

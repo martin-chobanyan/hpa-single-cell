@@ -9,6 +9,14 @@ def get_num_params(model):
     return num_total_params
 
 
+def get_num_opt_params(optimizer):
+    n_params = 0
+    for param_dict in optimizer.param_groups:
+        for p in param_dict['params']:
+            n_params += p.numel()
+    return n_params
+
+
 def get_num_output_features(cnn):
     final_conv = None
     for m in cnn.modules():

@@ -17,7 +17,7 @@ from hpa.model.layers import RoIPool, CellLogitLSE, ResidualBlock
 from hpa.model.localizers import CellTransformer, PeakResponseLocalizer, PeakCellTransformer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
-from hpa.utils.model import get_num_params
+from hpa.utils.model import get_num_params, get_num_opt_params
 from hpa.utils.train import checkpoint, Logger, LRScheduler
 from hpa.utils.train_roi import train_peak_roi_epoch, test_peak_roi_epoch
 
@@ -34,15 +34,11 @@ def create_optimizer(model, lr_value):
     -------
     torch.optim.Optimizer
     """
-    param_groups = [
-        {'params': model.cell_transformer.parameters(), 'lr': lr_value},
-        {'params': model.peak_cnn.parameters(), 'lr': lr_value},
-        {'params': (model.max_and_avg_weights, model.max_and_avg_bias), 'lr': lr_value},
-        {'params': model.fc_embed_cnn_features.parameters(), 'lr': lr_value},
-        {'params': model.cross_attn.parameters(), 'lr': lr_value},
-        {'params': model.fc_cam_logit_weights.parameters(), 'lr': lr_value}
-    ]
-    return AdamW(param_groups)
+    param_groups = []
+    for param_name, p in model.named_parameters():
+        if 'backbone' not in param_name:
+            param_groups.append(p)
+    return AdamW(param_groups, lr=lr_value)
 
 
 if __name__ == '__main__':
@@ -89,8 +85,8 @@ if __name__ == '__main__':
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))
 
-    train_idx = train_idx.head(200)
-    val_idx = val_idx.head(200)
+    # train_idx = train_idx.head(200)
+    # val_idx = val_idx.head(200)
 
     train_data = RGBYWithCellMasks(data_idx=train_idx,
                                    data_dir=DATA_DIR,
@@ -206,6 +202,19 @@ if __name__ == '__main__':
     criterion = FocalSymmetricLovaszHardLogLoss()
 
     # -------------------------------------------------------------------------------------------
+    # Resume from checkpoint (optional)
+    # -------------------------------------------------------------------------------------------
+    CHECKPOINT_DIR = config['checkpoint_dir']
+
+    resume = config['resume']['status']
+    if resume:
+        START_EPOCH = config['resume']['resume_epoch']
+        INITIAL_CHECKPOINT = os.path.join(CHECKPOINT_DIR, f'model{START_EPOCH - 1}.pth')
+        model.load_state_dict(torch.load(INITIAL_CHECKPOINT))
+    else:
+        START_EPOCH = 0
+
+    # -------------------------------------------------------------------------------------------
     # Prepare the optimizer
     # -------------------------------------------------------------------------------------------
 
@@ -215,13 +224,18 @@ if __name__ == '__main__':
     STEP_DELAY = config['model']['step_delay']
 
     lr_scheduler = LRScheduler(init_lr=INIT_LR, min_lr=MIN_LR, increment=LR_STEP, delay_start=STEP_DELAY)
+    for _ in range(0, START_EPOCH):
+        INIT_LR = lr_scheduler.update()
+
     optimizer = create_optimizer(model, INIT_LR)
+
+    n_train_params = get_num_opt_params(optimizer)
+    print(f'Number of trainable parameters: {n_train_params}')
 
     # -------------------------------------------------------------------------------------------
     # Train the model
     # -------------------------------------------------------------------------------------------
     LOGGER_PATH = config['logger_path']
-    CHECKPOINT_DIR = config['checkpoint_dir']
     create_folder(os.path.dirname(LOGGER_PATH))
     create_folder(os.path.dirname(CHECKPOINT_DIR))
 
@@ -245,10 +259,12 @@ if __name__ == '__main__':
         'val_exact',
         'val_f1'
     ]
+    if resume:
+        HEADER = None
     logger = Logger(LOGGER_PATH, header=HEADER)
 
     best_loss = float('inf')
-    for epoch in range(N_EPOCHS):
+    for epoch in range(START_EPOCH, N_EPOCHS):
         train_results = train_peak_roi_epoch(model=model,
                                              dataloader=train_loader,
                                              criterion=criterion,
