@@ -1,7 +1,7 @@
 """Neural networks for localization"""
 import torch
 import torch.nn.functional as F
-from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, AvgPool2d, BatchNorm1d, BatchNorm2d, Conv2d,
+from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, AvgPool2d, BatchNorm1d, BatchNorm2d, Conv2d, LayerNorm,
                       Dropout, Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample, ModuleList, Sigmoid)
 
 from .layers import ConvBlock, LogSumExp, RoIPool, TransformerEncoderLayer
@@ -419,20 +419,26 @@ class CellTransformer(Module):
                  num_heads=4,
                  cell_feature_dim=2048,
                  num_classes=18,
-                 upsample=None):
+                 upsample=None,
+                 dropout=0.1):
         super().__init__()
         self.feature_roi = feature_roi
         self.num_encoders = num_encoders
         self.emb_dim = emb_dim
         self.num_heads = num_heads
-        self.emb_cells = Linear(cell_feature_dim, emb_dim)
         self.num_classes = num_classes
         self.upsample = upsample
+        self.dropout = dropout
+
+        self.emb_cells = Sequential(Linear(cell_feature_dim, emb_dim),
+                                    LayerNorm(emb_dim),
+                                    Dropout(p=dropout),
+                                    ReLU())
 
         # transformer encoder layers
         self.encoders = ModuleList()
         for _ in range(self.num_encoders):
-            encoder = TransformerEncoderLayer(emb_dim=emb_dim, num_heads=num_heads)
+            encoder = TransformerEncoderLayer(emb_dim=emb_dim, num_heads=num_heads, dropout=dropout)
             self.encoders.append(encoder)
 
         # mapping of cell features to cell logits
