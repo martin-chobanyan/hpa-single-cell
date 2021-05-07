@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.nn import (AdaptiveAvgPool2d, AdaptiveMaxPool2d, AvgPool2d, BatchNorm1d, BatchNorm2d, Conv2d, LayerNorm,
                       Dropout, Flatten, Module, ReLU, Sequential, Linear, Parameter, Upsample, ModuleList, Sigmoid)
 
-from .layers import ConvBlock, LogSumExp, RoIPool, TransformerEncoderLayer
+from .layers import ConvBlock, LogSumExp, RoIPool, TransformerEncoderLayer, CellLogitLSE
 from .prm import median_filter, peak_stimulation
 from ..utils.model import get_num_output_features, merge_tiles, tile_image_batch
 
@@ -413,32 +413,43 @@ class PeakResponseLocalizer(Module):
 
 class CellTransformer(Module):
     def __init__(self,
+                 backbone,
                  feature_roi,
+                 spatial_roi=None,
                  num_encoders=1,
                  emb_dim=512,
                  num_heads=4,
                  cell_feature_dim=2048,
                  num_classes=18,
                  upsample=None,
-                 dropout=0.1):
+                 dropout_emb=0.1,
+                 dropout_trans=0.1,
+                 lse_fn=None,
+                 device='cpu'):
         super().__init__()
+        self.backbone = backbone
         self.feature_roi = feature_roi
+        self.spatial_roi = spatial_roi
         self.num_encoders = num_encoders
         self.emb_dim = emb_dim
         self.num_heads = num_heads
         self.num_classes = num_classes
         self.upsample = upsample
-        self.dropout = dropout
+        self.lse_fn = lse_fn
+        self.device = device
+
+        if self.lse_fn is None:
+            self.lse_fn = CellLogitLSE(device=self.device)
 
         self.emb_cells = Sequential(Linear(cell_feature_dim, emb_dim),
                                     LayerNorm(emb_dim),
-                                    Dropout(p=dropout),
+                                    Dropout(p=dropout_emb),
                                     ReLU())
 
         # transformer encoder layers
         self.encoders = ModuleList()
         for _ in range(self.num_encoders):
-            encoder = TransformerEncoderLayer(emb_dim=emb_dim, num_heads=num_heads, dropout=dropout)
+            encoder = TransformerEncoderLayer(emb_dim=emb_dim, num_heads=num_heads, dropout=dropout_trans)
             self.encoders.append(encoder)
 
         # mapping of cell features to cell logits
@@ -451,6 +462,9 @@ class CellTransformer(Module):
 
         # shape: (num_total_cells, cell_feature_dim)
         cell_features = self.feature_roi(feature_maps, cell_masks, cell_counts)
+        if self.spatial_roi is not None:
+            spatial_cell_features = self.spatial_roi(feature_maps, cell_masks, cell_counts)
+            cell_features = torch.cat([cell_features, spatial_cell_features], dim=1)
 
         # shape: (num_total_cells, emb_dim)
         cell_features = self.emb_cells(cell_features)
@@ -477,7 +491,8 @@ class CellTransformer(Module):
         # shape: (num_total_cells, emb_dim)
         return torch.cat(updated_features, dim=0)
 
-    def forward(self, feature_maps, cell_masks, cell_counts, return_cell_features=False):
+    def forward(self, cell_imgs, cell_masks, cell_counts, return_cells=False, return_cell_features=False):
+        feature_maps = self.backbone(cell_imgs)
 
         # extract the cell features by pooling their RoIs and embedding the resulting vectors
         cell_features = self.extract_cell_features(feature_maps, cell_masks, cell_counts)
@@ -489,7 +504,11 @@ class CellTransformer(Module):
         # shape: (num_total_cells, num_classes)
         cell_logits = self.fc_logits(cell_features)
 
-        result = [cell_logits]
+        logits = self.lse_fn(cell_logits, cell_counts)
+
+        result = [logits]
+        if return_cells:
+            result.append(cell_logits)
         if return_cell_features:
             result.append(cell_features)
         if len(result) == 1:

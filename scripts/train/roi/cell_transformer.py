@@ -13,13 +13,22 @@ from hpa.data import RGBYWithCellMasks, N_CHANNELS, CHANNEL_MEANS, CHANNEL_STDS
 from hpa.data.loader import cell_mask_collate
 from hpa.data.transforms import HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
-from hpa.model.layers import RoIPool
+from hpa.model.layers import RoIPool, SpatialRoIPool
 from hpa.model.localizers import CellTransformer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
 from hpa.utils.model import get_num_params, get_num_opt_params
 from hpa.utils.train import checkpoint, Logger, LRScheduler
 from hpa.utils.train_roi import train_roi_epoch, test_roi_epoch
+
+
+def create_optimizer(model, lr_value):
+    param_groups = []
+    for param_name, p in model.named_parameters():
+        if 'backbone' not in param_name:
+            param_groups.append(p)
+    return AdamW(param_groups, lr=lr_value)
+
 
 if __name__ == '__main__':
     print('Training a weakly-supervised RoI localizer with pretrained encoder')
@@ -28,6 +37,7 @@ if __name__ == '__main__':
     # Read in the config
     # -------------------------------------------------------------------------------------------
     CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi12.yaml'
+    # CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi13.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -65,8 +75,8 @@ if __name__ == '__main__':
     train_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'train-idx.csv'))
     val_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'joint', 'stratified', 'val-idx.csv'))
 
-    train_idx = train_idx.head(200)
-    val_idx = val_idx.head(200)
+    # train_idx = train_idx.head(200)
+    # val_idx = val_idx.head(200)
 
     train_data = RGBYWithCellMasks(data_idx=train_idx,
                                    data_dir=DATA_DIR,
@@ -132,6 +142,7 @@ if __name__ == '__main__':
                                   ReLU())
 
     feature_roi_pool = RoIPool(method=FEATURE_ROI_METHOD, positions=POSITION_ENCODING, tgt_shape=POSITION_ENC_SHAPE)
+    spatial_roi_pool = SpatialRoIPool(pool_method=SPATIAL_ROI_METHOD)
     upsample_fn = Upsample(scale_factor=2, mode='nearest')
 
     if FEATURE_ROI_METHOD == 'max_and_avg':
@@ -144,14 +155,16 @@ if __name__ == '__main__':
         cell_feature_dim += 3 * 3 * 1024
     print(f'Features extracted per cell = {cell_feature_dim}')
 
-    transformer = CellTransformer(feature_roi=feature_roi_pool,
-                                  num_encoders=NUM_ENCODERS,
-                                  emb_dim=EMB_DIM,
-                                  num_heads=NUM_HEADS,
-                                  upsample=upsample_fn,
-                                  cell_feature_dim=cell_feature_dim)
+    model = CellTransformer(backbone=densenet_encoder,
+                            feature_roi=feature_roi_pool,
+                            spatial_roi=spatial_roi_pool,
+                            num_encoders=NUM_ENCODERS,
+                            emb_dim=EMB_DIM,
+                            num_heads=NUM_HEADS,
+                            upsample=upsample_fn,
+                            cell_feature_dim=cell_feature_dim,
+                            device=DEVICE)
 
-    model = Sequential(densenet_encoder, transformer)
     model = model.to(DEVICE)
 
     for param in densenet_encoder.parameters():
@@ -172,7 +185,7 @@ if __name__ == '__main__':
     STEP_DELAY = config['model']['step_delay']
 
     lr_scheduler = LRScheduler(init_lr=INIT_LR, min_lr=MIN_LR, increment=LR_STEP, delay_start=STEP_DELAY)
-    optimizer = AdamW(model[1].parameters(), lr=INIT_LR)
+    optimizer = create_optimizer(model, INIT_LR)
 
     n_train_params = get_num_opt_params(optimizer)
     print(f'Number of trainable parameters: {n_train_params}')
@@ -222,7 +235,7 @@ if __name__ == '__main__':
                                      n_batches=N_VAL_BATCHES)
 
         lr = lr_scheduler.update()
-        optimizer = AdamW(model[1].parameters(), lr=lr)
+        optimizer = create_optimizer(model, lr)
 
         logger.add_entry(epoch, train_loss, *val_results)
 
