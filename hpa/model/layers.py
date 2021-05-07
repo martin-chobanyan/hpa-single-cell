@@ -3,6 +3,8 @@ from torch.nn import (BatchNorm2d, Conv2d, Module, ReLU, MultiheadAttention, Dro
                       AdaptiveMaxPool2d, AdaptiveAvgPool2d, Sigmoid, Flatten)
 import torch.nn.functional as F
 
+from ..segment import get_cell_bbox
+
 
 class ConvBlock(Module):
     def __init__(self, in_channels, out_channels, kernel_size, bnorm=True, relu=True, bias=True):
@@ -93,6 +95,58 @@ class SqueezeAndExciteBlock(Module):
         x = x + x_input
         x = self.relu(x)
         return x
+
+
+class SpatialRoIPool(Module):
+    def __init__(self, pool_method='max', tgt_shape=(3, 3)):
+        super().__init__()
+        self.pool_method = pool_method
+        self.tgt_shape = tgt_shape
+
+    def forward(self, feature_maps, cell_masks, cell_counts):
+        """Forward call
+
+        Parameters
+        ----------
+        feature_maps: torch.Tensor
+            CNN feature maps with shape (batch, num_features, height, width)
+        cell_masks: torch.Tensor
+            Boolean mask for each cell with shape (batch * cell_per_batch, height, width)
+        cell_counts: torch.Tensor
+            Sequence of cell counts per image in the batch. Has shape (batch,)
+
+        Returns
+        -------
+        torch.Tensor
+            A tensor with shape (batch * cells_per_batch, num_features) where each row is a feature vector for a cell.
+        """
+        i = 0
+        cell_vectors = []
+        for batch_idx, cell_count in enumerate(cell_counts):
+            for cell_mask in cell_masks[i:i+cell_count]:
+                # get the cell bbox boundaries
+                (y_min, y_max), (x_min, x_max) = get_cell_bbox(cell_mask)
+
+                # isolate the local cell mask using the bounding box
+                local_mask = cell_mask[y_min:y_max, x_min:x_max]
+
+                # extract the features in the local cell mask and zero out the background pixels
+                local_features = feature_maps[batch_idx, :, y_min:y_max, x_min:x_max].clone()
+                local_features[:, ~local_mask] = 0
+
+                # downsize the local cell features to the target shape
+                if self.pool_method == 'max':
+                    pooled_features = F.adaptive_max_pool2d(local_features, output_size=self.tgt_shape)
+                elif self.pool_method == 'avg':
+                    pooled_features = F.adaptive_avg_pool2d(local_features, output_size=self.tgt_shape)
+                else:
+                    raise ValueError(f'Unknown pool method: {self.pool_method}')
+
+                # flatten the features
+                pooled_features = pooled_features.view(-1)
+                cell_vectors.append(pooled_features)
+            i += cell_count
+        return torch.stack(cell_vectors)
 
 
 class RoIPool(Module):
