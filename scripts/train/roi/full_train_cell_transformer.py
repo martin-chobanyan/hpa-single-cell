@@ -74,7 +74,7 @@ if __name__ == '__main__':
     NUM_WORKERS = 4
 
     data_idx = pd.read_csv(os.path.join(ROOT_DIR, 'splits', 'complete-data-idx.csv'))
-    data_idx = data_idx.head(200)
+    # data_idx = data_idx.head(200)
 
     dataset = RGBYWithCellMasks(data_idx=data_idx,
                                 data_dir=DATA_DIR,

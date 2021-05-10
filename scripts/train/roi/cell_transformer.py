@@ -13,7 +13,7 @@ from hpa.data import RGBYWithCellMasks, N_CHANNELS, CHANNEL_MEANS, CHANNEL_STDS
 from hpa.data.loader import cell_mask_collate
 from hpa.data.transforms import HPACompose
 from hpa.model.bestfitting.densenet import DensenetClass
-from hpa.model.layers import RoIPool, SpatialRoIPool
+from hpa.model.layers import RoIPool
 from hpa.model.localizers import CellTransformer
 from hpa.model.loss import FocalSymmetricLovaszHardLogLoss
 from hpa.utils import create_folder
@@ -22,12 +22,18 @@ from hpa.utils.train import checkpoint, Logger, LRScheduler
 from hpa.utils.train_roi import train_roi_epoch, test_roi_epoch
 
 
-def create_optimizer(model, lr_value):
-    param_groups = []
+def create_optimizer(model, lr_backbone, lr_transform):
+    backbone_params = []
+    transform_params = []
     for param_name, p in model.named_parameters():
-        if 'backbone' not in param_name:
-            param_groups.append(p)
-    return AdamW(param_groups, lr=lr_value)
+        if 'backbone' in param_name:
+            backbone_params.append(p)
+        else:
+            transform_params.append(p)
+    return AdamW([
+        {'params': backbone_params, 'lr': lr_backbone},
+        {'params': transform_params, 'lr': lr_transform}
+    ])
 
 
 if __name__ == '__main__':
@@ -36,8 +42,7 @@ if __name__ == '__main__':
     # -------------------------------------------------------------------------------------------
     # Read in the config
     # -------------------------------------------------------------------------------------------
-    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi12.yaml'
-    # CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi13.yaml'
+    CONFIG_PATH = '/home/mchobanyan/data/kaggle/hpa-single-cell/configs/roi/roi14.yaml'
     with open(CONFIG_PATH, 'r') as file:
         config = safe_load(file)
 
@@ -119,7 +124,6 @@ if __name__ == '__main__':
     PRETRAINED_PATH = config['pretrained_path']
 
     FEATURE_ROI_METHOD = config['model']['cell_transformer']['feature_roi']
-    SPATIAL_ROI_METHOD = config['model']['cell_transformer']['spatial_roi']
     POSITION_ENCODING = config['model']['cell_transformer']['position_encoding']
     POSITION_ENC_SHAPE = config['model']['cell_transformer']['position_encoding_shape']
     NUM_ENCODERS = config['model']['cell_transformer']['num_encoders']
@@ -142,7 +146,6 @@ if __name__ == '__main__':
                                   ReLU())
 
     feature_roi_pool = RoIPool(method=FEATURE_ROI_METHOD, positions=POSITION_ENCODING, tgt_shape=POSITION_ENC_SHAPE)
-    spatial_roi_pool = SpatialRoIPool(pool_method=SPATIAL_ROI_METHOD)
     upsample_fn = Upsample(scale_factor=2, mode='nearest')
 
     if FEATURE_ROI_METHOD == 'max_and_avg':
@@ -151,13 +154,10 @@ if __name__ == '__main__':
         cell_feature_dim = 1024
     if POSITION_ENCODING:
         cell_feature_dim += POSITION_ENC_SHAPE * POSITION_ENC_SHAPE
-    if SPATIAL_ROI_METHOD != '':
-        cell_feature_dim += 3 * 3 * 1024
     print(f'Features extracted per cell = {cell_feature_dim}')
 
     model = CellTransformer(backbone=densenet_encoder,
                             feature_roi=feature_roi_pool,
-                            spatial_roi=spatial_roi_pool,
                             num_encoders=NUM_ENCODERS,
                             emb_dim=EMB_DIM,
                             num_heads=NUM_HEADS,
@@ -167,13 +167,9 @@ if __name__ == '__main__':
 
     model = model.to(DEVICE)
 
-    for param in densenet_encoder.parameters():
-        param.requires_grad = False
-
-    print(f'Number of frozen parameters: {get_num_params(densenet_encoder)}')
+    # for param in densenet_encoder.parameters():
+    #     param.requires_grad = False
     print(f'Total number of parameters: {get_num_params(model)}')
-
-    criterion = FocalSymmetricLovaszHardLogLoss()
 
     # -------------------------------------------------------------------------------------------
     # Prepare the optimizer
@@ -185,7 +181,7 @@ if __name__ == '__main__':
     STEP_DELAY = config['model']['step_delay']
 
     lr_scheduler = LRScheduler(init_lr=INIT_LR, min_lr=MIN_LR, increment=LR_STEP, delay_start=STEP_DELAY)
-    optimizer = create_optimizer(model, INIT_LR)
+    optimizer = create_optimizer(model, lr_backbone=MIN_LR, lr_transform=INIT_LR)
 
     n_train_params = get_num_opt_params(optimizer)
     print(f'Number of trainable parameters: {n_train_params}')
@@ -213,7 +209,8 @@ if __name__ == '__main__':
     ]
     logger = Logger(LOGGER_PATH, header=HEADER)
 
-    best_loss = float('inf')
+    criterion = FocalSymmetricLovaszHardLogLoss()
+
     for epoch in range(N_EPOCHS):
         train_loss = train_roi_epoch(model=model,
                                      dataloader=train_loader,
@@ -235,7 +232,7 @@ if __name__ == '__main__':
                                      n_batches=N_VAL_BATCHES)
 
         lr = lr_scheduler.update()
-        optimizer = create_optimizer(model, lr)
+        optimizer = create_optimizer(model, lr_backbone=MIN_LR, lr_transform=lr)
 
         logger.add_entry(epoch, train_loss, *val_results)
 
