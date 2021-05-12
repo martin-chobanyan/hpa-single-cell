@@ -2,6 +2,8 @@
 
 My top 6% approach to the [HPA Single Cell Classification Kaggle Competition](https://www.kaggle.com/c/hpa-single-cell-image-classification). The code includes peak response maps, puzzle-cam, and transformer encoders using RoI (cell mask) pooling over the CNN feature maps.
 
+See [this page](https://www.kaggle.com/c/hpa-single-cell-image-classification/discussion/238624) for a more detailed description of my approach.
+
 Overview of the cell-mask-based Transformer model (click on the image for higher resolution):
 
 ![cell transformer overview](https://github.com/martin-chobanyan/hpa-single-cell/blob/main/resources/cell-transformer-overview.png)
